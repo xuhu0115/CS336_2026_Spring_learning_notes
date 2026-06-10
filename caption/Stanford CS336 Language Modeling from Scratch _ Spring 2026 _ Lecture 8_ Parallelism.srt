@@ -1,1 +1,7479 @@
-﻿
+﻿1
+00:00:05,240 --> 00:00:07,400
+So last lecture, Percy covered some
+
+2
+00:00:07,400 --> 00:00:11,720
+of the underlying mechanics, let's call it, of parallelism.
+
+3
+00:00:11,720 --> 00:00:13,720
+Today, I'm going to do my favorite thing of talk
+
+4
+00:00:13,720 --> 00:00:17,220
+about all sorts of things you can know, like knowledge,
+
+5
+00:00:17,220 --> 00:00:20,960
+details, and trivia about how modern parallelism for language
+
+6
+00:00:20,960 --> 00:00:25,265
+model training works.
+
+7
+00:00:25,265 --> 00:00:26,640
+And what we're going to try to do
+
+8
+00:00:26,640 --> 00:00:30,520
+is really get to grips with the many, many complexities that
+
+9
+00:00:30,520 --> 00:00:32,439
+are involved when you are having to train
+
+10
+00:00:32,439 --> 00:00:35,120
+huge models on huge clusters.
+
+11
+00:00:35,120 --> 00:00:36,520
+It's going to turn out that there
+
+12
+00:00:36,520 --> 00:00:39,240
+are many different parallelization strategies
+
+13
+00:00:39,240 --> 00:00:41,720
+that you can use at once.
+
+14
+00:00:41,720 --> 00:00:44,040
+At the end, we will get to a slide where I say 4D
+
+15
+00:00:44,040 --> 00:00:46,520
+parallelism, because there's four different things that you
+
+16
+00:00:46,520 --> 00:00:47,540
+can do at once.
+
+17
+00:00:47,540 --> 00:00:50,080
+Actually, even more that I'll talk about.
+
+18
+00:00:50,080 --> 00:00:52,240
+And it turns out that to parallelize at the largest
+
+19
+00:00:52,240 --> 00:00:56,720
+scale, you'll need to use all of them or most of them.
+
+20
+00:00:56,720 --> 00:00:58,920
+And we'll discuss why.
+
+21
+00:00:58,920 --> 00:01:01,560
+Part of your assignment will be figuring out,
+
+22
+00:01:01,560 --> 00:01:05,500
+given a particular network topology and a particular model,
+
+23
+00:01:05,500 --> 00:01:07,160
+what is the optimal parallelization
+
+24
+00:01:07,160 --> 00:01:08,558
+strategy for that?
+
+25
+00:01:08,558 --> 00:01:10,600
+And then finally, I'll walk through some examples
+
+26
+00:01:10,600 --> 00:01:12,800
+of recent large scale training runs
+
+27
+00:01:12,800 --> 00:01:15,480
+with details that are published and show
+
+28
+00:01:15,480 --> 00:01:18,260
+you this stuff in action.
+
+29
+00:01:18,260 --> 00:01:22,460
+OK, so the very first part, I'll go through somewhat quickly.
+
+30
+00:01:22,460 --> 00:01:25,600
+It's partially a review of basic collectives, basic networking
+
+31
+00:01:25,600 --> 00:01:27,560
+primitives, right.
+
+32
+00:01:27,560 --> 00:01:30,880
+But the reason why we need all of this parallelism stuff
+
+33
+00:01:30,880 --> 00:01:33,520
+is because there's going to be two bottlenecks that we'll
+
+34
+00:01:33,520 --> 00:01:36,740
+solve by going to multiple machines and multiple GPUs.
+
+35
+00:01:36,740 --> 00:01:38,100
+So one of it is compute.
+
+36
+00:01:38,100 --> 00:01:41,640
+We need more compute than we can bring to bear on a single chip.
+
+37
+00:01:41,640 --> 00:01:45,080
+And the way we solve that is just to have many, many machines
+
+38
+00:01:45,080 --> 00:01:46,443
+and link them up together.
+
+39
+00:01:46,443 --> 00:01:48,360
+Right, the fastest supercomputers in the world
+
+40
+00:01:48,360 --> 00:01:52,160
+have exaflops of compute, whereas a single GPU
+
+41
+00:01:52,160 --> 00:01:55,080
+is nowhere near that number.
+
+42
+00:01:55,080 --> 00:01:58,600
+The other reason why we need to continue to scale in parallel
+
+43
+00:01:58,600 --> 00:01:59,800
+is because of memory, right.
+
+44
+00:01:59,800 --> 00:02:00,780
+Models are big.
+
+45
+00:02:00,780 --> 00:02:02,500
+We can't fit them all into one GPU,
+
+46
+00:02:02,500 --> 00:02:06,532
+so we need to shard them into smaller pieces somehow.
+
+47
+00:02:06,532 --> 00:02:08,199
+So this is going to lead to complexities
+
+48
+00:02:08,199 --> 00:02:11,360
+of having many GPUs across many different machines.
+
+49
+00:02:11,360 --> 00:02:13,480
+And an important conceptual object
+
+50
+00:02:13,480 --> 00:02:16,840
+that we will deal with throughout our lecture today
+
+51
+00:02:16,840 --> 00:02:19,920
+is the difference between intranode parallelism,
+
+52
+00:02:19,920 --> 00:02:21,993
+where your connections are very fast,
+
+53
+00:02:21,993 --> 00:02:24,160
+and so you can do things that are very communication
+
+54
+00:02:24,160 --> 00:02:25,240
+expensive.
+
+55
+00:02:25,240 --> 00:02:28,422
+And you're going to have slower internode communication.
+
+56
+00:02:28,422 --> 00:02:29,880
+And because these are slow, we will
+
+57
+00:02:29,880 --> 00:02:33,840
+have to use processes that respect the communication
+
+58
+00:02:33,840 --> 00:02:35,940
+constraints of our channel more, right.
+
+59
+00:02:35,940 --> 00:02:38,920
+So we're going to have to do both of those.
+
+60
+00:02:38,920 --> 00:02:42,063
+And remember all of the things that we will do today.
+
+61
+00:02:42,063 --> 00:02:44,480
+We're not actually going to be sending packets or anything
+
+62
+00:02:44,480 --> 00:02:44,860
+like that.
+
+63
+00:02:44,860 --> 00:02:46,320
+We're going to be dealing with this
+
+64
+00:02:46,320 --> 00:02:49,440
+at the level of collective communication primitives.
+
+65
+00:02:49,440 --> 00:02:51,360
+Right, so whenever we do accounting
+
+66
+00:02:51,360 --> 00:02:53,180
+for how much communication is done,
+
+67
+00:02:53,180 --> 00:02:55,880
+I might say, OK, we're going to have to do all-reduce
+
+68
+00:02:55,880 --> 00:02:58,240
+or we're going to have to do allgather to implement
+
+69
+00:02:58,240 --> 00:02:59,500
+some of these operations.
+
+70
+00:02:59,500 --> 00:03:03,338
+So in order to implement some of these efficiently,
+
+71
+00:03:03,338 --> 00:03:05,880
+you're going to have to go all the way to the hardware level.
+
+72
+00:03:05,880 --> 00:03:08,140
+But our discussion today is going to be algorithmic.
+
+73
+00:03:08,140 --> 00:03:10,600
+And so all of the networking primitives I'll talk about
+
+74
+00:03:10,600 --> 00:03:14,037
+is going to be at this level of a collective.
+
+75
+00:03:14,037 --> 00:03:15,620
+And remember, Percy talked about this,
+
+76
+00:03:15,620 --> 00:03:17,400
+but this is important for--
+
+77
+00:03:17,400 --> 00:03:19,400
+very important for one part of the talk, which
+
+78
+00:03:19,400 --> 00:03:21,040
+is going to be that the equivalence
+
+79
+00:03:21,040 --> 00:03:24,220
+between all-reduce and reduce-scatter plus all-gather.
+
+80
+00:03:24,220 --> 00:03:27,260
+Right, so there's going to be one algorithm where on one hand,
+
+81
+00:03:27,260 --> 00:03:29,140
+you do an all-reduce, and on the other hand,
+
+82
+00:03:29,140 --> 00:03:31,180
+you do two of these different steps.
+
+83
+00:03:31,180 --> 00:03:35,240
+And the fact that these two have the same cost in some sense
+
+84
+00:03:35,240 --> 00:03:38,140
+means that we can do the algorithm on the right for free.
+
+85
+00:03:38,140 --> 00:03:39,540
+We'll see that again later.
+
+86
+00:03:39,540 --> 00:03:41,640
+This is just a quick refresher just
+
+87
+00:03:41,640 --> 00:03:44,720
+to make sure you remember what Percy said.
+
+88
+00:03:44,720 --> 00:03:48,810
+OK, so that's it for the really basic review.
+
+89
+00:03:48,810 --> 00:03:50,560
+The other thing I want to touch on briefly
+
+90
+00:03:50,560 --> 00:03:52,420
+before we get into the algorithms,
+
+91
+00:03:52,420 --> 00:03:55,550
+which are going to be hardware and substrate agnostic,
+
+92
+00:03:55,550 --> 00:03:57,870
+is the difference-- oh, sorry, yes?
+
+93
+00:04:00,590 --> 00:04:03,710
+[INAUDIBLE] reduce scatter and--
+
+94
+00:03:57,870 --> 00:04:00,590
+Is there any particular reason why you are saying that old
+
+95
+00:04:03,710 --> 00:04:06,230
+OK, the question was, is there any reason why I'm talking
+
+96
+00:04:06,230 --> 00:04:07,410
+about this specifically?
+
+97
+00:04:07,910 --> 00:04:10,570
+[INAUDIBLE]
+
+98
+00:04:07,410 --> 00:04:07,910
+We will--
+
+99
+00:04:11,070 --> 00:04:13,090
+Yes, yes, there are other decompositions.
+
+100
+00:04:13,090 --> 00:04:15,270
+This one in particular will be useful for a algorithm, which
+
+101
+00:04:15,270 --> 00:04:17,329
+is why I'm emphasizing this particular decomposition.
+
+102
+00:04:17,329 --> 00:04:17,690
+That's right.
+
+103
+00:04:17,690 --> 00:04:19,570
+There's others that you could do, of course.
+
+104
+00:04:19,570 --> 00:04:20,390
+Yes.
+
+105
+00:04:20,390 --> 00:04:21,709
+OK.
+
+106
+00:04:21,709 --> 00:04:25,390
+So the other thing I will talk about before I start--
+
+107
+00:04:25,390 --> 00:04:27,810
+most of our discussion today will be hardware agnostic.
+
+108
+00:04:27,810 --> 00:04:30,650
+For the most part, once you understand the basic concepts,
+
+109
+00:04:30,650 --> 00:04:33,670
+you'll be able to apply it to any hardware substrate.
+
+110
+00:04:33,670 --> 00:04:36,250
+But I do want to briefly before we start,
+
+111
+00:04:36,250 --> 00:04:38,870
+just talk about the low level hardware stack.
+
+112
+00:04:38,870 --> 00:04:41,110
+Both because it's interesting.
+
+113
+00:04:41,110 --> 00:04:43,030
+But also because I think it leads
+
+114
+00:04:43,030 --> 00:04:45,750
+to different parallelization strategies
+
+115
+00:04:45,750 --> 00:04:48,910
+across different model training companies.
+
+116
+00:04:48,910 --> 00:04:50,310
+So remember the TPU.
+
+117
+00:04:50,310 --> 00:04:52,470
+Right, TPU is Google's accelerator.
+
+118
+00:04:52,470 --> 00:04:54,690
+And I mentioned during the GPU lecture,
+
+119
+00:04:54,690 --> 00:04:57,185
+a TPU is like a lightweight GPU.
+
+120
+00:04:57,185 --> 00:04:58,810
+But what's different is the networking.
+
+121
+00:04:58,810 --> 00:05:00,268
+So how is the networking different?
+
+122
+00:05:00,268 --> 00:05:05,110
+Well, in one slide, the TPU network
+
+123
+00:05:05,110 --> 00:05:06,870
+is what's called a toroidal mesh.
+
+124
+00:05:06,870 --> 00:05:08,590
+Right, so you can think about a grid
+
+125
+00:05:08,590 --> 00:05:10,598
+and then allowing the ends of the grid
+
+126
+00:05:10,598 --> 00:05:11,890
+to communicate with each other.
+
+127
+00:05:11,890 --> 00:05:13,348
+It's a little bit more complicated.
+
+128
+00:05:13,348 --> 00:05:15,390
+It's a 3D picture.
+
+129
+00:05:15,390 --> 00:05:18,150
+Which, Marcel, you have the visualization, right?
+
+130
+00:05:18,150 --> 00:05:21,370
+Can you post that in the lecture channel?
+
+131
+00:05:21,370 --> 00:05:21,870
+Yeah.
+
+132
+00:05:21,870 --> 00:05:24,037
+So there's a fun web visualization that you can look
+
+133
+00:05:24,037 --> 00:05:27,710
+at that visualizes the toroidal mesh in 3D, which is very cool.
+
+134
+00:05:27,710 --> 00:05:30,650
+But your mental model, I think, can roughly be this picture.
+
+135
+00:05:30,650 --> 00:05:32,450
+You can forget the more complex one.
+
+136
+00:05:32,450 --> 00:05:35,387
+All the chips are networked to neighbors and the neighbors wrap
+
+137
+00:05:35,387 --> 00:05:35,970
+around, right.
+
+138
+00:05:35,970 --> 00:05:37,610
+So what does this let you do?
+
+139
+00:05:37,610 --> 00:05:39,430
+This lets you have a very simple networking
+
+140
+00:05:39,430 --> 00:05:41,787
+topology that can be indefinitely scaled up very
+
+141
+00:05:41,787 --> 00:05:42,370
+simply, right.
+
+142
+00:05:42,370 --> 00:05:45,790
+The number of neighbors you have is the same, no matter
+
+143
+00:05:45,790 --> 00:05:48,670
+how large your network gets.
+
+144
+00:05:48,670 --> 00:05:51,970
+In contrast, the GPU networking philosophy is very different.
+
+145
+00:05:51,970 --> 00:05:54,490
+It's really much more of an all to all philosophy.
+
+146
+00:05:54,490 --> 00:05:57,350
+And the way that it's networked is it's like a tree.
+
+147
+00:05:57,350 --> 00:05:58,610
+It's often called a fat tree.
+
+148
+00:05:58,610 --> 00:06:01,090
+You have your GPUs connected very,
+
+149
+00:06:01,090 --> 00:06:02,770
+very quickly at the lowest layers.
+
+150
+00:06:02,770 --> 00:06:05,850
+And then you have groups of GPUs that are connected in a pod.
+
+151
+00:06:05,850 --> 00:06:07,950
+And then the pods might have spine switches
+
+152
+00:06:07,950 --> 00:06:09,990
+that allow them to communicate to each other.
+
+153
+00:06:09,990 --> 00:06:13,910
+And this means that as the number of nodes grows,
+
+154
+00:06:13,910 --> 00:06:15,410
+the tree gets bigger and bigger.
+
+155
+00:06:15,410 --> 00:06:18,330
+Your communication costs is going to get higher,
+
+156
+00:06:18,330 --> 00:06:21,270
+or your communication topology will get more complicated,
+
+157
+00:06:21,270 --> 00:06:25,470
+because you're connecting all these all to all as you go.
+
+158
+00:06:25,470 --> 00:06:27,630
+Now, this difference in philosophy
+
+159
+00:06:27,630 --> 00:06:30,290
+means that if you're communicating only to neighbors,
+
+160
+00:06:30,290 --> 00:06:31,170
+TPUs are great.
+
+161
+00:06:31,170 --> 00:06:32,910
+They're cost effective.
+
+162
+00:06:32,910 --> 00:06:35,190
+And you can make each connection more beefy,
+
+163
+00:06:35,190 --> 00:06:36,930
+right, with the same power consumption.
+
+164
+00:06:36,930 --> 00:06:40,250
+But if you're connecting in very random ways, very stochastic,
+
+165
+00:06:40,250 --> 00:06:42,462
+unpredictable ways, then this GPU networking
+
+166
+00:06:42,462 --> 00:06:43,670
+will be more flexible, right.
+
+167
+00:06:43,670 --> 00:06:46,950
+So there's this very different design philosophy
+
+168
+00:06:46,950 --> 00:06:49,010
+that you see between TPUs and GPUs.
+
+169
+00:06:49,010 --> 00:06:51,990
+And I'll try to mention where this shows up
+
+170
+00:06:51,990 --> 00:06:55,590
+as we go through the parallelism lecture.
+
+171
+00:06:55,590 --> 00:06:58,957
+And I posted this into the lecture chat last lecture.
+
+172
+00:06:58,957 --> 00:07:00,790
+Because someone asked, what's the difference
+
+173
+00:07:00,790 --> 00:07:02,310
+between these two and so on?
+
+174
+00:07:02,310 --> 00:07:05,710
+Right, but just to back up my point, Bill Daley and Jeff Dean
+
+175
+00:07:05,710 --> 00:07:08,350
+were talking about the different hardware and what
+
+176
+00:07:08,350 --> 00:07:10,630
+are they good for, right.
+
+177
+00:07:10,630 --> 00:07:12,950
+GPUs are good for things like mixture of experts, where
+
+178
+00:07:12,950 --> 00:07:15,550
+the communication is much less clear because tokens
+
+179
+00:07:15,550 --> 00:07:17,710
+route to different experts.
+
+180
+00:07:17,710 --> 00:07:19,950
+TPUs are great if you have this dense model
+
+181
+00:07:19,950 --> 00:07:23,150
+that you're doing very predictable partitions of.
+
+182
+00:07:23,150 --> 00:07:27,390
+I'll talk about that in an idea called tensor parallelism later
+
+183
+00:07:27,390 --> 00:07:28,370
+in this lecture.
+
+184
+00:07:28,370 --> 00:07:31,970
+And so these hardware things are good for different workloads.
+
+185
+00:07:31,970 --> 00:07:35,110
+And this was where I was going to leave it for the lecture
+
+186
+00:07:35,110 --> 00:07:37,750
+until this morning, when Google decided
+
+187
+00:07:37,750 --> 00:07:42,190
+that they were going to announce TPU8i and t this morning.
+
+188
+00:07:42,190 --> 00:07:44,910
+And then I looked at this as I was preparing my lecture,
+
+189
+00:07:44,910 --> 00:07:46,750
+and I said, oh my god, TPu8i?
+
+190
+00:07:46,750 --> 00:07:48,650
+That's a tree topology.
+
+191
+00:07:48,650 --> 00:07:51,710
+They've switched to a much more all to all connection.
+
+192
+00:07:51,710 --> 00:07:54,630
+And if you think about it, it makes sense.
+
+193
+00:07:54,630 --> 00:07:57,270
+Modern day language models are MoEs.
+
+194
+00:07:57,270 --> 00:07:58,990
+And if you're going to serve a MoE,
+
+195
+00:07:58,990 --> 00:08:00,790
+you're going to have all sorts of bandwidth
+
+196
+00:08:00,790 --> 00:08:04,210
+just flying around as you route tokens to different experts.
+
+197
+00:08:04,210 --> 00:08:07,750
+You probably do want much more of an all to all
+
+198
+00:08:07,750 --> 00:08:09,940
+connectivity where, at inference time,
+
+199
+00:08:09,940 --> 00:08:11,690
+these communications are real bottlenecks.
+
+200
+00:08:11,690 --> 00:08:14,390
+You want to deal with them.
+
+201
+00:08:14,390 --> 00:08:18,230
+And even at training time, the TPU8t, which is a training chip,
+
+202
+00:08:18,230 --> 00:08:22,690
+the cross rack connectivity looks a lot more like a GPU.
+
+203
+00:08:22,690 --> 00:08:25,230
+There's much more like an all to all style
+
+204
+00:08:25,230 --> 00:08:28,050
+switch that's being built out called the Virgo network.
+
+205
+00:08:28,050 --> 00:08:31,310
+That's a higher level networking stack.
+
+206
+00:08:31,310 --> 00:08:34,049
+So I think there's really interesting things happening.
+
+207
+00:08:34,049 --> 00:08:36,350
+It's a little bit of a convergent evolution
+
+208
+00:08:36,350 --> 00:08:40,110
+across both TPUs and GPUs, where really the workloads are
+
+209
+00:08:40,110 --> 00:08:43,169
+defining the network that we need to have.
+
+210
+00:08:43,169 --> 00:08:43,669
+OK.
+
+211
+00:08:43,669 --> 00:08:47,270
+And then the final thing about hardware--
+
+212
+00:08:47,270 --> 00:08:51,390
+I just love talking about what's happening in the Chinese AI
+
+213
+00:08:51,390 --> 00:08:53,590
+scene-- is this idea of--
+
+214
+00:08:53,590 --> 00:08:55,670
+I think in the GPU lecture, someone
+
+215
+00:08:55,670 --> 00:08:59,150
+asked, if SRAM is so good, why don't you just all use SRAM?
+
+216
+00:08:59,150 --> 00:09:00,130
+Only SRAM chip.
+
+217
+00:09:00,130 --> 00:09:01,130
+And that's Grok, right?
+
+218
+00:09:01,130 --> 00:09:02,190
+It works really well.
+
+219
+00:09:02,190 --> 00:09:04,470
+Now, some of you might be thinking,
+
+220
+00:09:04,470 --> 00:09:07,270
+if all to all connectivity is good, why don't you just
+
+221
+00:09:07,270 --> 00:09:10,110
+connect everything and connect them with really fast fiber
+
+222
+00:09:10,110 --> 00:09:10,930
+optic chips, right?
+
+223
+00:09:10,930 --> 00:09:15,270
+And then you would get the Huawei Ascend 910, right?
+
+224
+00:09:15,270 --> 00:09:18,735
+So if you look at the specs of the Huawei Ascend,
+
+225
+00:09:18,735 --> 00:09:20,110
+it's actually really interesting,
+
+226
+00:09:20,110 --> 00:09:23,070
+because each chip is a lot worse than a H200.
+
+227
+00:09:23,070 --> 00:09:25,430
+It's a lot slower at matmuls.
+
+228
+00:09:25,430 --> 00:09:27,850
+It's slower in many ways.
+
+229
+00:09:27,850 --> 00:09:32,270
+But then, if you're willing to dedicate a giant rack of fiber
+
+230
+00:09:32,270 --> 00:09:35,450
+optic switches to connect a much larger number of chips,
+
+231
+00:09:35,450 --> 00:09:39,750
+like in their case, 384 in a big rack,
+
+232
+00:09:39,750 --> 00:09:41,950
+then maybe you can deal with the fact
+
+233
+00:09:41,950 --> 00:09:45,950
+that each chip is slower by just connecting a much, much larger
+
+234
+00:09:45,950 --> 00:09:49,060
+number of these guys, right.
+
+235
+00:09:49,060 --> 00:09:50,620
+And then so I think what this shows
+
+236
+00:09:50,620 --> 00:09:52,400
+us is a really interesting tradeoff.
+
+237
+00:09:52,400 --> 00:09:54,320
+Because once you look at this architecture,
+
+238
+00:09:54,320 --> 00:09:57,180
+you realize the power consumption of this thing
+
+239
+00:09:57,180 --> 00:09:58,440
+is insanely high.
+
+240
+00:09:58,440 --> 00:10:02,100
+It's four times that of the equivalent NVIDIA system.
+
+241
+00:10:02,100 --> 00:10:03,820
+And so it's something like, well,
+
+242
+00:10:03,820 --> 00:10:05,760
+if you're willing to pay the power cost,
+
+243
+00:10:05,760 --> 00:10:09,200
+you can solve a lot of communication problems
+
+244
+00:10:09,200 --> 00:10:11,660
+brute force, and you can scale out much more aggressively
+
+245
+00:10:11,660 --> 00:10:12,877
+to 300 chips.
+
+246
+00:10:12,877 --> 00:10:14,460
+But you're paying a power cost, right.
+
+247
+00:10:14,460 --> 00:10:16,420
+It's similar to that SRAM story of,
+
+248
+00:10:16,420 --> 00:10:18,420
+if you want to design a hardware that
+
+249
+00:10:18,420 --> 00:10:21,880
+is efficient to use both power and manufacturing wise,
+
+250
+00:10:21,880 --> 00:10:23,130
+you end up in a certain place.
+
+251
+00:10:23,130 --> 00:10:24,547
+If you want to brute force things,
+
+252
+00:10:24,547 --> 00:10:26,100
+you end up in a very different place.
+
+253
+00:10:26,100 --> 00:10:29,580
+Right, so this is, I think, just a very interesting place
+
+254
+00:10:29,580 --> 00:10:33,060
+to learn from about these hardware design tradeoffs.
+
+255
+00:10:33,060 --> 00:10:34,580
+OK, good.
+
+256
+00:10:34,580 --> 00:10:37,260
+So now, just to put this all together,
+
+257
+00:10:37,260 --> 00:10:40,500
+the first thing you should think about is the new unit of compute
+
+258
+00:10:40,500 --> 00:10:41,520
+is not the GPU.
+
+259
+00:10:41,520 --> 00:10:43,220
+It's the entire data center.
+
+260
+00:10:43,220 --> 00:10:45,280
+And we want to have several things.
+
+261
+00:10:45,280 --> 00:10:48,080
+We want to be able to control the amount of memory we use.
+
+262
+00:10:48,080 --> 00:10:50,380
+We want to be able to control the amount of compute
+
+263
+00:10:50,380 --> 00:10:51,680
+that we can bring to bear.
+
+264
+00:10:51,680 --> 00:10:53,940
+And we want all of these to be lossless.
+
+265
+00:10:53,940 --> 00:10:57,020
+Right, we want to use all of the resources that we have.
+
+266
+00:10:57,020 --> 00:11:00,380
+And then we're going to talk about the algorithms that
+
+267
+00:11:00,380 --> 00:11:03,140
+will enable this through all these communication
+
+268
+00:11:03,140 --> 00:11:05,860
+primitives components.
+
+269
+00:11:05,860 --> 00:11:07,900
+OK, good.
+
+270
+00:11:07,900 --> 00:11:10,180
+So now the second part of this lecture
+
+271
+00:11:10,180 --> 00:11:12,280
+is going to be the bulk of the content.
+
+272
+00:11:12,280 --> 00:11:14,860
+And these are the algorithms that we will use
+
+273
+00:11:14,860 --> 00:11:18,500
+to paralyze language models.
+
+274
+00:11:18,500 --> 00:11:23,220
+And there's going to be a couple of different important ideas.
+
+275
+00:11:23,220 --> 00:11:25,420
+Actually, we should probably maybe even be grouped.
+
+276
+00:11:25,420 --> 00:11:28,420
+Data parallel is one set of ideas for essentially
+
+277
+00:11:28,420 --> 00:11:30,740
+taking your data that you're going to train on
+
+278
+00:11:30,740 --> 00:11:32,640
+and distributing them across GPUs.
+
+279
+00:11:32,640 --> 00:11:34,723
+So the data is the ones that move around.
+
+280
+00:11:34,723 --> 00:11:36,140
+And then model parallelism, you're
+
+281
+00:11:36,140 --> 00:11:38,015
+going to chop up different parts of the model
+
+282
+00:11:38,015 --> 00:11:39,380
+and split them around.
+
+283
+00:11:39,380 --> 00:11:41,300
+Turns out that the boundary between these two
+
+284
+00:11:41,300 --> 00:11:43,300
+is a little leaky, because one of the algorithms
+
+285
+00:11:43,300 --> 00:11:45,500
+here will actually cut parameters up, too.
+
+286
+00:11:45,500 --> 00:11:47,945
+But we will see why I've put all of these algorithms
+
+287
+00:11:47,945 --> 00:11:49,320
+into these different bins, right.
+
+288
+00:11:49,320 --> 00:11:53,300
+And conceptually, we're trying to both scale
+
+289
+00:11:53,300 --> 00:11:55,060
+out compute and memory, and that's
+
+290
+00:11:55,060 --> 00:11:59,540
+why we will need a whole bunch of these different tricks.
+
+291
+00:11:59,540 --> 00:12:00,860
+Cool.
+
+292
+00:12:00,860 --> 00:12:01,360
+All right.
+
+293
+00:12:01,360 --> 00:12:04,360
+So data parallelism, I think, is the easiest to understand.
+
+294
+00:12:04,360 --> 00:12:05,980
+It is conceptually very simple, and I
+
+295
+00:12:05,980 --> 00:12:09,180
+think it's the standard way that you would try to parallelize
+
+296
+00:12:09,180 --> 00:12:11,900
+an algorithm like LLM training.
+
+297
+00:12:11,900 --> 00:12:13,640
+So forget that we're doing Adam.
+
+298
+00:12:13,640 --> 00:12:16,860
+We're going to do just naive SGD for the moment.
+
+299
+00:12:16,860 --> 00:12:20,000
+Then we have a capital B sized batch, right.
+
+300
+00:12:20,000 --> 00:12:23,480
+So each update step, I'm going to take capital B elements,
+
+301
+00:12:23,480 --> 00:12:25,760
+and I'm going to sum up the gradients.
+
+302
+00:12:25,760 --> 00:12:27,280
+And I'll take my update, right.
+
+303
+00:12:27,280 --> 00:12:28,900
+So the most naive form of parallelism
+
+304
+00:12:28,900 --> 00:12:31,860
+that one can do for this is to take my batch,
+
+305
+00:12:31,860 --> 00:12:34,323
+B. I can cut it up across M machines.
+
+306
+00:12:34,323 --> 00:12:35,740
+If they're divisible, each machine
+
+307
+00:12:35,740 --> 00:12:39,292
+will get a smaller B over M sized batch.
+
+308
+00:12:39,292 --> 00:12:42,000
+And then what I'm going to do is each machine computes gradients,
+
+309
+00:12:42,000 --> 00:12:46,340
+and then I will synchronize all the gradients to get my sum.
+
+310
+00:12:46,340 --> 00:12:47,160
+OK, great.
+
+311
+00:12:47,160 --> 00:12:49,620
+So compute scaling wise, this is perfect.
+
+312
+00:12:49,620 --> 00:12:52,340
+As long as there's enough examples per GPU, we're good.
+
+313
+00:12:52,340 --> 00:12:53,800
+Communications overhead.
+
+314
+00:12:53,800 --> 00:12:55,660
+How much do we have to talk to each other?
+
+315
+00:12:55,660 --> 00:12:59,150
+Well, every batch, we have to basically communicate
+
+316
+00:12:59,150 --> 00:13:00,900
+two times the number of parameters, right.
+
+317
+00:13:00,900 --> 00:13:05,220
+Because what I have to do is I have to basically communicate
+
+318
+00:13:05,220 --> 00:13:07,780
+my gradients back and forth.
+
+319
+00:13:07,780 --> 00:13:10,920
+OK, and then for memory scaling, there's absolutely none.
+
+320
+00:13:10,920 --> 00:13:13,640
+Every GPU has the same copies of the models.
+
+321
+00:13:13,640 --> 00:13:16,300
+You need to have the same sized activations
+
+322
+00:13:16,300 --> 00:13:21,260
+so you don't save any memory at all in this scheme.
+
+323
+00:13:21,260 --> 00:13:23,280
+So now what is the problem?
+
+324
+00:13:23,280 --> 00:13:26,000
+Clearly we've addressed compute to some extent.
+
+325
+00:13:26,000 --> 00:13:27,680
+But we have not addressed memory at all.
+
+326
+00:13:27,680 --> 00:13:30,700
+So let's take a look at this memory problem
+
+327
+00:13:30,700 --> 00:13:33,780
+and just do a little bit of accounting.
+
+328
+00:13:33,780 --> 00:13:36,938
+Initially, it might seem that the memory situation is bad.
+
+329
+00:13:36,938 --> 00:13:38,980
+But it turns out our memory situation is actually
+
+330
+00:13:38,980 --> 00:13:40,500
+just terrible.
+
+331
+00:13:40,500 --> 00:13:43,420
+And the reason why the memory situation is terrible
+
+332
+00:13:43,420 --> 00:13:46,460
+is if you just do some parameter accounting, right,
+
+333
+00:13:46,460 --> 00:13:49,308
+it just turns out you need to store a lot of stuff.
+
+334
+00:13:49,308 --> 00:13:51,600
+Right, and not only do we need to store a lot of stuff,
+
+335
+00:13:51,600 --> 00:13:53,260
+it's actually more than the parameters
+
+336
+00:13:53,260 --> 00:13:55,020
+that we need to store.
+
+337
+00:13:55,020 --> 00:13:58,940
+So roughly the rule of thumb-- it depends on your precision.
+
+338
+00:13:58,940 --> 00:14:00,680
+But the rule of thumb, you might say,
+
+339
+00:14:00,680 --> 00:14:03,740
+is that we need something like five copies of weights
+
+340
+00:14:03,740 --> 00:14:06,980
+and 16 bytes per parameter to store our model.
+
+341
+00:14:06,980 --> 00:14:10,580
+So we will need to, of course, store our model parameters.
+
+342
+00:14:10,580 --> 00:14:13,098
+We need a place to put our gradients, right.
+
+343
+00:14:13,098 --> 00:14:15,640
+The accumulator before we put them into the model parameters.
+
+344
+00:14:15,640 --> 00:14:18,340
+So we need to store those guys.
+
+345
+00:14:18,340 --> 00:14:21,420
+But actually, you need to maybe store more stuff.
+
+346
+00:14:21,420 --> 00:14:24,860
+You might need to have a higher precision accumulator that you
+
+347
+00:14:24,860 --> 00:14:26,740
+accumulate into in SGD.
+
+348
+00:14:26,740 --> 00:14:29,347
+This might be temporary, but you might need this.
+
+349
+00:14:29,347 --> 00:14:31,180
+And if you're doing Adam, and this is really
+
+350
+00:14:31,180 --> 00:14:33,500
+where the bad stuff comes in, you're
+
+351
+00:14:33,500 --> 00:14:35,860
+going to need to track both the first and second moments
+
+352
+00:14:35,860 --> 00:14:36,760
+of your gradients.
+
+353
+00:14:36,760 --> 00:14:38,593
+And you need to track them over time, right.
+
+354
+00:14:38,593 --> 00:14:40,700
+So you need two of these.
+
+355
+00:14:40,700 --> 00:14:42,780
+And unfortunately, you might need
+
+356
+00:14:42,780 --> 00:14:45,300
+to store them in high precision depending on your stability
+
+357
+00:14:45,300 --> 00:14:46,160
+characteristics.
+
+358
+00:14:46,160 --> 00:14:48,820
+And these might be quite expensive, right.
+
+359
+00:14:48,820 --> 00:14:52,382
+And we generally call these things optimizer state.
+
+360
+00:14:52,382 --> 00:14:54,340
+Right, the thing that you're accumulating into.
+
+361
+00:14:54,340 --> 00:14:55,840
+The first moment, the second moment.
+
+362
+00:14:55,840 --> 00:14:57,240
+Right, and these are actually quite expensive.
+
+363
+00:14:57,240 --> 00:14:58,698
+If you look at the accounting, this
+
+364
+00:14:58,698 --> 00:15:04,620
+is most of the cost memory wise of doing an SGD update.
+
+365
+00:15:04,620 --> 00:15:09,820
+And so I think one of the really elegant and nice things
+
+366
+00:15:09,820 --> 00:15:12,780
+that you can do in this space is to start
+
+367
+00:15:12,780 --> 00:15:15,540
+cutting up the amount of memory you need
+
+368
+00:15:15,540 --> 00:15:18,000
+and distributing them across the accelerators,
+
+369
+00:15:18,000 --> 00:15:20,700
+but doing so in this structured way that gets you
+
+370
+00:15:20,700 --> 00:15:23,140
+these gains for basically free.
+
+371
+00:15:23,140 --> 00:15:26,340
+So as I said in the last slide, the optimizer state
+
+372
+00:15:26,340 --> 00:15:27,520
+is most of your memory.
+
+373
+00:15:27,520 --> 00:15:29,880
+So here, the optimizer state is green.
+
+374
+00:15:29,880 --> 00:15:31,580
+That's most of your memory.
+
+375
+00:15:31,580 --> 00:15:34,963
+Orange is your gradients, and blue is your parameters.
+
+376
+00:15:34,963 --> 00:15:37,380
+And notice how parameters and gradients are the same size,
+
+377
+00:15:37,380 --> 00:15:39,650
+and your state is bigger, right.
+
+378
+00:15:39,650 --> 00:15:41,370
+If you do naive data parallel, you're
+
+379
+00:15:41,370 --> 00:15:44,830
+just going to replicate all of this state across the GPUs.
+
+380
+00:15:44,830 --> 00:15:46,450
+And this is not so good, right.
+
+381
+00:15:46,450 --> 00:15:49,050
+Because you've, in some sense, consumed way
+
+382
+00:15:49,050 --> 00:15:51,330
+more memory than you need and your memory consumption
+
+383
+00:15:51,330 --> 00:15:53,670
+is linear with your number of accelerators.
+
+384
+00:15:53,670 --> 00:15:55,690
+Not so good, right.
+
+385
+00:15:55,690 --> 00:15:58,010
+What we can do instead is perhaps
+
+386
+00:15:58,010 --> 00:16:02,630
+we can shard the optimizer state onto different GPUs.
+
+387
+00:16:02,630 --> 00:16:04,370
+And this would be a big savings.
+
+388
+00:16:04,370 --> 00:16:08,070
+If we shard different other parts of what we need to track,
+
+389
+00:16:08,070 --> 00:16:09,950
+that would be also big savings.
+
+390
+00:16:09,950 --> 00:16:13,210
+Maybe we can also shard the gradients into different GPUs.
+
+391
+00:16:13,210 --> 00:16:15,730
+Or in the extreme, maybe we can shard everything
+
+392
+00:16:15,730 --> 00:16:17,430
+into different accelerators.
+
+393
+00:16:17,430 --> 00:16:19,770
+And then you can see that the implied memory
+
+394
+00:16:19,770 --> 00:16:22,890
+gains on the very right would be quite dramatic as we go all
+
+395
+00:16:22,890 --> 00:16:25,770
+the way down from 120 to 1.9.
+
+396
+00:16:25,770 --> 00:16:29,090
+Now, the main thing that we will study now
+
+397
+00:16:29,090 --> 00:16:31,170
+is, what is the cost of doing this?
+
+398
+00:16:31,170 --> 00:16:33,770
+Right, you might imagine, there's no free lunch.
+
+399
+00:16:33,770 --> 00:16:35,668
+Baseline is going to be the fastest.
+
+400
+00:16:35,668 --> 00:16:37,210
+And as we go downwards to here, we're
+
+401
+00:16:37,210 --> 00:16:39,770
+going to have to pay a big communication cost in order
+
+402
+00:16:39,770 --> 00:16:41,387
+to achieve these memory savings.
+
+403
+00:16:41,387 --> 00:16:43,970
+I think the remarkable thing is going to be that a lot of this
+
+404
+00:16:43,970 --> 00:16:46,450
+will be free.
+
+405
+00:16:46,450 --> 00:16:48,610
+But I'm going to walk through this step by step.
+
+406
+00:16:48,610 --> 00:16:51,915
+So let's start with what people call ZeRO stage 1.
+
+407
+00:16:51,915 --> 00:16:54,290
+So there's going to be three stages corresponding to each
+
+408
+00:16:54,290 --> 00:16:55,310
+of these steps.
+
+409
+00:16:55,310 --> 00:16:57,270
+And so stage 1 is going to be the simplest.
+
+410
+00:16:57,270 --> 00:16:59,730
+The only thing I will shard is my optimizer state.
+
+411
+00:16:59,730 --> 00:17:03,050
+And I will shard it across the GPUs, OK.
+
+412
+00:17:03,050 --> 00:17:04,970
+Everyone is going to have both the parameters
+
+413
+00:17:04,970 --> 00:17:06,690
+and the gradients.
+
+414
+00:17:06,690 --> 00:17:09,130
+And so what you can think of is each worker
+
+415
+00:17:09,130 --> 00:17:11,210
+is going to be responsible for updating
+
+416
+00:17:11,210 --> 00:17:12,829
+one slice of the parameter.
+
+417
+00:17:12,829 --> 00:17:15,690
+So if I'm GPU number 0, my responsibility
+
+418
+00:17:15,690 --> 00:17:18,490
+is updating this very first slice over here.
+
+419
+00:17:18,490 --> 00:17:23,450
+And I'm not responsible for any of the other updates.
+
+420
+00:17:23,450 --> 00:17:24,690
+So how would it work?
+
+421
+00:17:24,690 --> 00:17:27,470
+Right, so what we're going to do is everyone computes.
+
+422
+00:17:27,470 --> 00:17:29,390
+Everyone has a different data item, right.
+
+423
+00:17:29,390 --> 00:17:32,130
+So they're going to compute a full gradient on their data
+
+424
+00:17:32,130 --> 00:17:32,630
+item.
+
+425
+00:17:32,630 --> 00:17:33,770
+That's the first step.
+
+426
+00:17:33,770 --> 00:17:36,230
+Now I'm going to take the gradient I computed
+
+427
+00:17:36,230 --> 00:17:38,778
+and I'm going to reduce scatter the gradients onto all
+
+428
+00:17:38,778 --> 00:17:39,570
+the other machines.
+
+429
+00:17:39,570 --> 00:17:41,570
+Because everyone else needs my gradients, right?
+
+430
+00:17:41,570 --> 00:17:43,510
+But they don't need all the gradients.
+
+431
+00:17:43,510 --> 00:17:46,750
+They only need the gradients associated with their update.
+
+432
+00:17:46,750 --> 00:17:50,830
+Right, so every worker is going to get from me, my gradient,
+
+433
+00:17:50,830 --> 00:17:53,190
+but they're part of the parameter space, right.
+
+434
+00:17:53,190 --> 00:17:55,450
+So this is going to be equivalent to a number
+
+435
+00:17:55,450 --> 00:17:57,040
+of parameters communication costs.
+
+436
+00:17:57,040 --> 00:17:59,290
+Because I'm sending my gradient, but I'm cutting it up
+
+437
+00:17:59,290 --> 00:18:02,050
+and sending it into each GPU.
+
+438
+00:18:02,050 --> 00:18:04,870
+Now each machine is going to be able to now do their update.
+
+439
+00:18:04,870 --> 00:18:07,130
+They have their parameters, they have their gradients
+
+440
+00:18:07,130 --> 00:18:08,550
+that they got from everybody else,
+
+441
+00:18:08,550 --> 00:18:10,967
+and they have their own state that they've tracked, right.
+
+442
+00:18:10,967 --> 00:18:13,630
+And now, the parameters have been updated.
+
+443
+00:18:13,630 --> 00:18:15,510
+And now I'm going to all gather them back.
+
+444
+00:18:15,510 --> 00:18:17,050
+Right, I was responsible for, let's
+
+445
+00:18:17,050 --> 00:18:19,050
+say, one fourth of the parameters.
+
+446
+00:18:19,050 --> 00:18:21,368
+So those updated parameters, I'm going to send back
+
+447
+00:18:21,368 --> 00:18:22,410
+to everybody else, right.
+
+448
+00:18:22,410 --> 00:18:25,930
+So this is a all-gather, right.
+
+449
+00:18:25,930 --> 00:18:28,610
+So this is where the equivalence is useful.
+
+450
+00:18:28,610 --> 00:18:30,930
+How many operations did I do?
+
+451
+00:18:30,930 --> 00:18:35,210
+Well, in the naive data parallel case, what I had to do
+
+452
+00:18:35,210 --> 00:18:36,790
+was I had to do one all-reduce.
+
+453
+00:18:36,790 --> 00:18:39,658
+Right, I had to exchange all the gradients with everybody
+
+454
+00:18:39,658 --> 00:18:40,950
+and then do the updates, right.
+
+455
+00:18:40,950 --> 00:18:43,890
+So the communication cost is 2 times the parameters.
+
+456
+00:18:43,890 --> 00:18:47,190
+Now in ZeRO stage 1, I did two operations.
+
+457
+00:18:47,190 --> 00:18:49,790
+One was a reduce-scatter to send the gradients out
+
+458
+00:18:49,790 --> 00:18:52,230
+and then an all-gather to collect the updated parameters.
+
+459
+00:18:52,230 --> 00:18:54,770
+But we already said a reduce-scatter and an all-gather
+
+460
+00:18:54,770 --> 00:18:56,610
+is equivalent to an all-reduce.
+
+461
+00:18:56,610 --> 00:19:00,850
+So ZeRO stage 1 is going to have the exact same communication
+
+462
+00:19:00,850 --> 00:19:03,710
+characteristics as naive DDP.
+
+463
+00:19:03,710 --> 00:19:04,710
+Right, so this was free.
+
+464
+00:19:04,710 --> 00:19:05,630
+Free memory savings.
+
+465
+00:19:05,630 --> 00:19:06,370
+Wonderful, right?
+
+466
+00:19:06,370 --> 00:19:07,768
+And we look at the memory.
+
+467
+00:19:07,768 --> 00:19:09,310
+We've basically taken the parameters.
+
+468
+00:19:09,310 --> 00:19:12,570
+And anything that's an optimizer state, I've divided by n GPUs,
+
+469
+00:19:12,570 --> 00:19:13,070
+right.
+
+470
+00:19:13,070 --> 00:19:15,330
+Wonderful, wonderful, wonderful.
+
+471
+00:19:15,330 --> 00:19:16,850
+Now, can we do more?
+
+472
+00:19:16,850 --> 00:19:19,290
+Well ZeRO stage 2 is now going to say,
+
+473
+00:19:19,290 --> 00:19:21,330
+I'm going to split the gradients up.
+
+474
+00:19:21,330 --> 00:19:25,810
+And then I'm going to shard that as well.
+
+475
+00:19:25,810 --> 00:19:27,463
+Now, this is going to be trickier
+
+476
+00:19:27,463 --> 00:19:29,130
+because before I was relying on the fact
+
+477
+00:19:29,130 --> 00:19:31,390
+that I can compute the entire gradient,
+
+478
+00:19:31,390 --> 00:19:33,590
+now I can't even materialize the whole gradient.
+
+479
+00:19:33,590 --> 00:19:35,650
+So what do I do.
+
+480
+00:19:35,650 --> 00:19:38,810
+Well, this turns out to just be a systems trick.
+
+481
+00:19:38,810 --> 00:19:40,920
+As I sweep backwards through my network,
+
+482
+00:19:40,920 --> 00:19:42,670
+I don't need to compute the full gradient.
+
+483
+00:19:42,670 --> 00:19:47,410
+I can send out the gradients to the associated workers as I go.
+
+484
+00:19:47,410 --> 00:19:51,730
+So the key step here is now, instead of materializing
+
+485
+00:19:51,730 --> 00:19:53,690
+the gradient vector all at once, I'm
+
+486
+00:19:53,690 --> 00:19:56,010
+going to walk backwards through the compute graph.
+
+487
+00:19:56,010 --> 00:19:57,850
+And after computing a layer's gradients,
+
+488
+00:19:57,850 --> 00:19:59,795
+I'm going to immediately just reduce
+
+489
+00:19:59,795 --> 00:20:01,670
+that to send that to the right worker, right.
+
+490
+00:20:01,670 --> 00:20:04,548
+And once gradients aren't needed in the backwards graph,
+
+491
+00:20:04,548 --> 00:20:05,590
+just immediately free it.
+
+492
+00:20:05,590 --> 00:20:07,650
+Right, so you're now incrementally computing
+
+493
+00:20:07,650 --> 00:20:09,370
+and sending gradients as you go.
+
+494
+00:20:09,370 --> 00:20:12,610
+And as you can see, doing it incrementally or doing it
+
+495
+00:20:12,610 --> 00:20:14,230
+all at once, same thing, right?
+
+496
+00:20:14,230 --> 00:20:16,310
+So it doesn't really make a difference.
+
+497
+00:20:16,310 --> 00:20:19,770
+So now you can, at the end, once again all gather the parameters.
+
+498
+00:20:19,770 --> 00:20:21,730
+I've started the gradients in some sense
+
+499
+00:20:21,730 --> 00:20:25,610
+without incurring any additional costs, right.
+
+500
+00:20:25,610 --> 00:20:28,850
+OK, so the last and the most hairy thing-- and this always,
+
+501
+00:20:28,850 --> 00:20:31,970
+when I first learned about this, seemed like total magic--
+
+502
+00:20:31,970 --> 00:20:35,070
+is we've gotten something for free so far,
+
+503
+00:20:35,070 --> 00:20:36,390
+so let's keep pushing it.
+
+504
+00:20:36,390 --> 00:20:39,250
+I'm going to shard the parameters as well all the way
+
+505
+00:20:39,250 --> 00:20:41,250
+across all the states.
+
+506
+00:20:41,250 --> 00:20:43,370
+And so we're going to use the same kind of idea
+
+507
+00:20:43,370 --> 00:20:45,207
+that we used in ZeRO stage 2.
+
+508
+00:20:45,207 --> 00:20:47,290
+And the idea, remember, was I'm going to do things
+
+509
+00:20:47,290 --> 00:20:49,273
+incrementally, right.
+
+510
+00:20:49,273 --> 00:20:50,690
+And so what I'm going to do is I'm
+
+511
+00:20:50,690 --> 00:20:54,410
+going to send and receive parameters on demand while
+
+512
+00:20:54,410 --> 00:20:55,870
+stepping through the compute graph.
+
+513
+00:20:55,870 --> 00:20:59,210
+And this is really tricky, because each GPU only
+
+514
+00:20:59,210 --> 00:21:01,410
+sees a slice of both the parameters, gradients,
+
+515
+00:21:01,410 --> 00:21:04,970
+and optimizer states at any one time, right.
+
+516
+00:21:04,970 --> 00:21:07,550
+And this is ZeRO stage 3, also known as FSDP.
+
+517
+00:21:07,550 --> 00:21:10,750
+If you've ever parallelized anything in a Torch library,
+
+518
+00:21:10,750 --> 00:21:13,970
+you've probably dealt with this before.
+
+519
+00:21:13,970 --> 00:21:17,050
+So the way that it works under the hood
+
+520
+00:21:17,050 --> 00:21:18,570
+is what you're going to do is you're
+
+521
+00:21:18,570 --> 00:21:22,310
+going to do two all-gathers and one reduce-scatter as you go.
+
+522
+00:21:22,310 --> 00:21:25,230
+So we're going to step from left to right here.
+
+523
+00:21:25,230 --> 00:21:28,790
+And this is going to be the entire update process.
+
+524
+00:21:28,790 --> 00:21:32,030
+So what you do is you're going to load your model.
+
+525
+00:21:32,030 --> 00:21:34,850
+You have your two GPUs at the top and the bottom.
+
+526
+00:21:34,850 --> 00:21:38,390
+You're first going to gather your weights for this one layer.
+
+527
+00:21:38,390 --> 00:21:40,155
+I'm going to forward this one layer.
+
+528
+00:21:40,155 --> 00:21:42,530
+And then I can free my weights, because I've already done
+
+529
+00:21:42,530 --> 00:21:43,322
+the forward, right.
+
+530
+00:21:43,322 --> 00:21:45,130
+I don't need these parameters anymore.
+
+531
+00:21:45,130 --> 00:21:47,490
+Now, let's say I only have one layer.
+
+532
+00:21:47,490 --> 00:21:49,910
+Now I can move to the backwards process.
+
+533
+00:21:49,910 --> 00:21:52,170
+Now to do the backwards step, I need the activations,
+
+534
+00:21:52,170 --> 00:21:53,250
+which I've kept.
+
+535
+00:21:53,250 --> 00:21:55,330
+And I need the parameters for this layer, which
+
+536
+00:21:55,330 --> 00:21:57,570
+I can all-gather on demand.
+
+537
+00:21:57,570 --> 00:21:59,590
+I all-gather it, I do the backwards.
+
+538
+00:21:59,590 --> 00:22:02,100
+And then I scatter the gradients back right when I get them.
+
+539
+00:22:02,100 --> 00:22:03,350
+Right, so I got the gradients.
+
+540
+00:22:03,350 --> 00:22:04,863
+I reduce-scatter the gradients out.
+
+541
+00:22:04,863 --> 00:22:06,030
+And then I free the weights.
+
+542
+00:22:06,030 --> 00:22:08,530
+I don't need them anymore, and I repeat this process, right.
+
+543
+00:22:08,530 --> 00:22:10,750
+So I grab the parameters as I need them.
+
+544
+00:22:10,750 --> 00:22:12,230
+I compute my backwards.
+
+545
+00:22:12,230 --> 00:22:14,930
+I send the gradients out, and I repeat this process.
+
+546
+00:22:14,930 --> 00:22:16,630
+And then I update my weights.
+
+547
+00:22:16,630 --> 00:22:18,650
+All done, right.
+
+548
+00:22:18,650 --> 00:22:20,287
+So what's the communication cost?
+
+549
+00:22:20,287 --> 00:22:21,870
+Right, how many all-gathers did we do?
+
+550
+00:22:21,870 --> 00:22:25,770
+We did two all-gathers, one reduce-scatter.
+
+551
+00:22:25,770 --> 00:22:30,100
+Also, so we have one extra all-gather, which seems bad.
+
+552
+00:22:30,100 --> 00:22:30,860
+That's one thing.
+
+553
+00:22:30,860 --> 00:22:33,240
+The second thing is this seems a little crazy in terms
+
+554
+00:22:33,240 --> 00:22:35,560
+of the overhead, because we're doing communication
+
+555
+00:22:35,560 --> 00:22:36,360
+all the time.
+
+556
+00:22:36,360 --> 00:22:39,600
+Every layer, we're doing this communication.
+
+557
+00:22:39,600 --> 00:22:43,960
+You might think that this is extremely expensive and bad.
+
+558
+00:22:43,960 --> 00:22:45,760
+But I think one of the things that's
+
+559
+00:22:45,760 --> 00:22:49,240
+counterintuitive and important is
+
+560
+00:22:49,240 --> 00:22:53,520
+ZeRO stage 3 uses two really important ideas to make
+
+561
+00:22:53,520 --> 00:22:56,200
+this essentially overhead free.
+
+562
+00:22:56,200 --> 00:22:58,160
+So the first one, which we've already seen,
+
+563
+00:22:58,160 --> 00:23:01,030
+is this idea that we're going to sweep through the compute graph,
+
+564
+00:23:01,030 --> 00:23:03,280
+and then we're going to do the necessary communication
+
+565
+00:23:03,280 --> 00:23:05,120
+and then immediately free the memory.
+
+566
+00:23:05,120 --> 00:23:07,800
+Right, that's already an idea we've experienced.
+
+567
+00:23:07,800 --> 00:23:10,720
+The other idea, which I haven't talked about yet,
+
+568
+00:23:10,720 --> 00:23:14,040
+is we're going to overlap the communication and computation
+
+569
+00:23:14,040 --> 00:23:16,180
+cost of this process, right.
+
+570
+00:23:16,180 --> 00:23:19,460
+And this is hard to explain initially.
+
+571
+00:23:19,460 --> 00:23:22,600
+So I think I've taken this plot from this paper, which
+
+572
+00:23:22,600 --> 00:23:27,440
+I think was explaining the PyTorch FSDP architecture.
+
+573
+00:23:27,440 --> 00:23:32,478
+So the way that this works is in order-- so we have different
+
+574
+00:23:32,478 --> 00:23:33,020
+streams here.
+
+575
+00:23:33,020 --> 00:23:34,620
+This is what's happening in the CPU.
+
+576
+00:23:34,620 --> 00:23:36,910
+This is what's happening in the GPU for computation,
+
+577
+00:23:36,910 --> 00:23:39,160
+and then what's happening in the GPU for communication
+
+578
+00:23:39,160 --> 00:23:41,000
+at the very bottom here.
+
+579
+00:23:41,000 --> 00:23:44,880
+Now, the way FSDP works is I have to first get my parameters
+
+580
+00:23:44,880 --> 00:23:46,460
+before I can do my computation.
+
+581
+00:23:46,460 --> 00:23:48,660
+So I'm going to all-gather 0, layer 0, right.
+
+582
+00:23:48,660 --> 00:23:51,560
+And once I've all-gathered, I can now do my forward.
+
+583
+00:23:51,560 --> 00:23:53,280
+But as I'm doing my forward, notice
+
+584
+00:23:53,280 --> 00:23:56,140
+that I'm requesting the next layer's parameters.
+
+585
+00:23:56,140 --> 00:23:59,280
+I'm all gathering 1 while I'm doing this computation.
+
+586
+00:23:59,280 --> 00:24:02,680
+And now I all-gathered 1, I can now do forward 1, right.
+
+587
+00:24:02,680 --> 00:24:06,420
+And I can start all-gathering 2 while I'm starting this process.
+
+588
+00:24:06,420 --> 00:24:10,240
+And so I'm overlapping computation and communication
+
+589
+00:24:10,240 --> 00:24:11,620
+as I'm doing this.
+
+590
+00:24:11,620 --> 00:24:14,420
+And I might spend some time freeing my parameters.
+
+591
+00:24:14,420 --> 00:24:17,980
+I might also spend some time computing another forward.
+
+592
+00:24:17,980 --> 00:24:20,580
+For example, if you reuse that W nought,
+
+593
+00:24:20,580 --> 00:24:24,240
+I'm reusing this forward 0 twice.
+
+594
+00:24:24,240 --> 00:24:25,720
+And so what this allows you to do
+
+595
+00:24:25,720 --> 00:24:28,320
+is if you have enough computation and your network's
+
+596
+00:24:28,320 --> 00:24:31,640
+fast enough, by overlapping communication and computation,
+
+597
+00:24:31,640 --> 00:24:32,320
+right.
+
+598
+00:24:32,320 --> 00:24:34,368
+FSDP can basically be free.
+
+599
+00:24:34,368 --> 00:24:35,660
+Right, you do see some bubbles.
+
+600
+00:24:35,660 --> 00:24:36,920
+These are overheads.
+
+601
+00:24:36,920 --> 00:24:39,880
+But if your comms is very fast and your computation
+
+602
+00:24:39,880 --> 00:24:41,920
+is very big, right, you can easily
+
+603
+00:24:41,920 --> 00:24:44,942
+see how the computation can run faster than the communication--
+
+604
+00:24:44,942 --> 00:24:46,400
+I'm sorry, the computation can take
+
+605
+00:24:46,400 --> 00:24:48,480
+longer than the communication, and you
+
+606
+00:24:48,480 --> 00:24:52,320
+end up having this really great improvement in memory usage
+
+607
+00:24:52,320 --> 00:24:57,040
+without paying for almost any amount of memory use.
+
+608
+00:24:57,040 --> 00:25:01,840
+OK, so when we look at the different ZeRO stages,
+
+609
+00:25:01,840 --> 00:25:04,800
+right, DDP, the naive data parallel,
+
+610
+00:25:04,800 --> 00:25:06,800
+costs 2 times parameters.
+
+611
+00:25:06,800 --> 00:25:09,280
+Right, it was a single all-reduce.
+
+612
+00:25:09,280 --> 00:25:11,260
+The two ZeRO stages, 1 and 2, right,
+
+613
+00:25:11,260 --> 00:25:13,780
+the ones that shard gradient and optimizer state,
+
+614
+00:25:13,780 --> 00:25:15,840
+this is free in the literal sense,
+
+615
+00:25:15,840 --> 00:25:18,920
+because it has the same amount of communication cost, right.
+
+616
+00:25:18,920 --> 00:25:21,360
+It's just the identity of all-reduce
+
+617
+00:25:21,360 --> 00:25:25,560
+being equivalent to two operations, right.
+
+618
+00:25:25,560 --> 00:25:28,000
+Now, ZeRO stage 3 is technically a little bit more
+
+619
+00:25:28,000 --> 00:25:28,740
+communications.
+
+620
+00:25:28,740 --> 00:25:30,680
+You need an extra all-gather, right.
+
+621
+00:25:30,680 --> 00:25:33,800
+But it's not so bad because of the really clever ways
+
+622
+00:25:33,800 --> 00:25:36,880
+in which all these libraries can hide the communication cost
+
+623
+00:25:36,880 --> 00:25:38,060
+underneath the computation.
+
+624
+00:25:38,060 --> 00:25:40,700
+So in practice, FSDP, if you run it,
+
+625
+00:25:40,700 --> 00:25:42,840
+you're going to see GPU utilization that's
+
+626
+00:25:42,840 --> 00:25:46,300
+very close to just the single GPU performance.
+
+627
+00:25:46,300 --> 00:25:50,195
+It is actually quite remarkable how good FSDP is.
+
+628
+00:25:50,195 --> 00:25:51,820
+And it's also very conceptually simple.
+
+629
+00:25:51,820 --> 00:25:54,960
+You will actually have to write an FSDP implementation
+
+630
+00:25:54,960 --> 00:25:57,000
+as part of your assignment.
+
+631
+00:25:57,000 --> 00:26:00,560
+And you can just write a wrapper that will wrap any module
+
+632
+00:26:00,560 --> 00:26:02,620
+and turn it into its FSDP version.
+
+633
+00:26:02,620 --> 00:26:04,600
+Right, conceptually, all you're going to do
+
+634
+00:26:04,600 --> 00:26:07,680
+is do a bunch of all-gathers, compute, free, and then repeat
+
+635
+00:26:07,680 --> 00:26:10,320
+on the backwards pass.
+
+636
+00:26:10,320 --> 00:26:12,840
+OK, good.
+
+637
+00:26:14,160 --> 00:26:15,840
+[INAUDIBLE]
+
+638
+00:26:12,840 --> 00:26:14,160
+Yes?
+
+639
+00:26:16,520 --> 00:26:19,200
+--gradients from the next GPU to calculate the gradients
+
+640
+00:26:19,200 --> 00:26:21,320
+for the previous GPU, right?
+
+641
+00:26:21,320 --> 00:26:25,080
+When you say-- so we're not--
+
+642
+00:26:25,080 --> 00:26:26,760
+I think what you just described, which
+
+643
+00:26:26,760 --> 00:26:29,480
+is taking gradients from one GPU to the next, that's
+
+644
+00:26:29,480 --> 00:26:30,580
+closer to pipelining.
+
+645
+00:26:30,580 --> 00:26:32,720
+Pipelining would be if one layer was on one GPU
+
+646
+00:26:32,720 --> 00:26:34,680
+and another layer was on another GPU.
+
+647
+00:26:34,680 --> 00:26:35,580
+That's not the case.
+
+648
+00:26:35,580 --> 00:26:42,200
+So in all these cases, every GPU goes through the entire model,
+
+649
+00:26:42,200 --> 00:26:43,920
+right, from the start to finish.
+
+650
+00:26:43,920 --> 00:26:46,440
+But the difference is, no GPU is going
+
+651
+00:26:46,440 --> 00:26:49,000
+to hold the entire parameters at the same time.
+
+652
+00:26:49,000 --> 00:26:51,280
+And so what we're going to do is if I only
+
+653
+00:26:51,280 --> 00:26:54,900
+have part of the network that doesn't have layer 0,
+
+654
+00:26:54,900 --> 00:26:57,680
+I'm going to demand the layer 0 parameters first
+
+655
+00:26:57,680 --> 00:26:59,060
+and then do the full computation.
+
+656
+00:26:59,060 --> 00:27:01,018
+And then I'll move on to the next layer, right.
+
+657
+00:27:01,018 --> 00:27:02,960
+So it's the same computation.
+
+658
+00:27:02,960 --> 00:27:04,600
+It's the same single GPU computation
+
+659
+00:27:04,600 --> 00:27:05,860
+as naive data parallel.
+
+660
+00:27:05,860 --> 00:27:08,460
+But you can just think of it as request parameters,
+
+661
+00:27:08,460 --> 00:27:12,020
+free parameters in between every computational operation.
+
+662
+00:27:12,020 --> 00:27:12,520
+Yes?
+
+663
+00:27:12,520 --> 00:27:15,758
+So are you saying that every GPU has a part of every layer,
+
+664
+00:27:15,758 --> 00:27:17,300
+and that's what the all-gather's for?
+
+665
+00:27:17,300 --> 00:27:17,900
+Yes, that's right.
+
+666
+00:27:17,900 --> 00:27:19,150
+So the picture is here, right.
+
+667
+00:27:19,150 --> 00:27:20,942
+Parameters, gradients, and optimizer states
+
+668
+00:27:20,942 --> 00:27:22,740
+are all sharded across the different GPUs.
+
+669
+00:27:22,740 --> 00:27:23,640
+That's right.
+
+670
+00:27:23,640 --> 00:27:24,780
+Yeah, good.
+
+671
+00:27:24,780 --> 00:27:25,880
+Oh, yes.
+
+672
+00:27:25,880 --> 00:27:28,280
+Why does the communication cost not
+
+673
+00:27:28,280 --> 00:27:31,220
+multiply by the number of layers as well?
+
+674
+00:27:34,280 --> 00:27:37,480
+So the number of operations multiplies by layer.
+
+675
+00:27:37,480 --> 00:27:38,460
+So that's correct.
+
+676
+00:27:38,460 --> 00:27:41,340
+But each of these communication pieces is smaller, right.
+
+677
+00:27:41,340 --> 00:27:44,040
+Because this is just one tiny MLP or something.
+
+678
+00:27:44,040 --> 00:27:46,320
+And I'm comparing that to the cost of all-reducing
+
+679
+00:27:46,320 --> 00:27:47,220
+a whole network.
+
+680
+00:27:47,220 --> 00:27:49,920
+Right, so it all adds up in some sense.
+
+681
+00:27:49,920 --> 00:27:51,880
+Yeah, good.
+
+682
+00:27:51,880 --> 00:27:53,680
+All right.
+
+683
+00:27:53,680 --> 00:27:55,080
+OK, good.
+
+684
+00:27:55,080 --> 00:27:58,680
+So in practice, if you look at the maximum size that can fit
+
+685
+00:27:58,680 --> 00:28:04,220
+on, let's say, a A100 GPU, if you go from the baseline,
+
+686
+00:28:04,220 --> 00:28:06,240
+you can not even fit a 7B model.
+
+687
+00:28:06,240 --> 00:28:08,120
+And you go to ZeRO stage 3.
+
+688
+00:28:08,120 --> 00:28:11,620
+You can now fit 50 billion parameter models and so on,
+
+689
+00:28:11,620 --> 00:28:12,660
+right.
+
+690
+00:28:12,660 --> 00:28:17,260
+So it becomes a lot easier to fit these big models using FSDP.
+
+691
+00:28:17,260 --> 00:28:19,480
+Right, the improvements that you get
+
+692
+00:28:19,480 --> 00:28:22,950
+in terms of the memory improvement
+
+693
+00:28:22,950 --> 00:28:24,830
+is quite significant.
+
+694
+00:28:24,830 --> 00:28:26,790
+OK, yes.
+
+695
+00:28:26,790 --> 00:28:29,790
+So can you go back to the previous slide?
+
+696
+00:28:29,790 --> 00:28:36,190
+So regarding this on 8x1 A100, what would be the limitation
+
+697
+00:28:36,190 --> 00:28:39,470
+on H100 or P200?
+
+698
+00:28:39,470 --> 00:28:43,550
+OK, I can't do the mental math of multiply by 141
+
+699
+00:28:43,550 --> 00:28:47,372
+and divide by 80, but that would be the number for an H200.
+
+700
+00:28:47,372 --> 00:28:48,330
+And so on and so forth.
+
+701
+00:28:48,330 --> 00:28:49,550
+Yeah, it would be linear, right.
+
+702
+00:28:49,550 --> 00:28:51,425
+It wouldn't really change the math very much,
+
+703
+00:28:51,425 --> 00:28:53,830
+though, to go from one accelerator to up.
+
+704
+00:28:53,830 --> 00:28:56,570
+OK, so FSDP, I think, is very clean.
+
+705
+00:28:56,570 --> 00:28:57,410
+It's very elegant.
+
+706
+00:28:57,410 --> 00:28:58,990
+I like it a lot.
+
+707
+00:28:58,990 --> 00:29:00,850
+I wish I could end the lecture here.
+
+708
+00:29:00,850 --> 00:29:04,110
+But unfortunately, we will have to proceed into uglier
+
+709
+00:29:04,110 --> 00:29:05,910
+and more hairy things.
+
+710
+00:29:05,910 --> 00:29:08,730
+And there's two reasons why we have to do that.
+
+711
+00:29:08,730 --> 00:29:10,550
+One of them, and this is an important idea
+
+712
+00:29:10,550 --> 00:29:13,110
+for parallelization, is that in some sense,
+
+713
+00:29:13,110 --> 00:29:15,610
+data parallel is consuming an important resource.
+
+714
+00:29:15,610 --> 00:29:19,090
+And that resource is the batch size, so to speak, right.
+
+715
+00:29:19,090 --> 00:29:20,870
+If you have a batch size of 8, you
+
+716
+00:29:20,870 --> 00:29:25,070
+can never have more than eight accelerators, right.
+
+717
+00:29:25,070 --> 00:29:26,990
+And you might think, OK, let's just make
+
+718
+00:29:26,990 --> 00:29:28,782
+the batch size bigger and bigger and bigger
+
+719
+00:29:28,782 --> 00:29:30,390
+as we have accelerators.
+
+720
+00:29:30,390 --> 00:29:33,510
+You can't do that, because at a certain point,
+
+721
+00:29:33,510 --> 00:29:35,830
+there's something called the critical batch size, where
+
+722
+00:29:35,830 --> 00:29:39,150
+the basically gain that you get from the additional batch
+
+723
+00:29:39,150 --> 00:29:42,510
+element is less than if you had taken another SGD step
+
+724
+00:29:42,510 --> 00:29:43,950
+on that single element, right.
+
+725
+00:29:43,950 --> 00:29:46,930
+So there comes a point where at small batch sizes,
+
+726
+00:29:46,930 --> 00:29:49,570
+adding extra elements is perfectly helpful.
+
+727
+00:29:49,570 --> 00:29:51,225
+It's the same as taking more SGD steps.
+
+728
+00:29:51,225 --> 00:29:53,350
+But at a certain point, diminishing return hits in.
+
+729
+00:29:53,350 --> 00:29:55,945
+An infinitely large batch size is not infinitely better
+
+730
+00:29:55,945 --> 00:29:57,070
+than infinite steps, right.
+
+731
+00:29:57,070 --> 00:29:59,310
+Infinite single steps.
+
+732
+00:29:59,310 --> 00:30:02,370
+Because of this, now we have faced a hard tradeoff.
+
+733
+00:30:02,370 --> 00:30:06,110
+Do we want small batch sizes and let our GPUs be more idle?
+
+734
+00:30:06,110 --> 00:30:09,870
+Do we want big batch sizes and take the hit from optimization?
+
+735
+00:30:09,870 --> 00:30:11,430
+Hard to say, rigt.
+
+736
+00:30:11,430 --> 00:30:13,290
+There's another issue that we have,
+
+737
+00:30:13,290 --> 00:30:16,230
+which is that we still have memory issues, which
+
+738
+00:30:16,230 --> 00:30:19,190
+is ZeRO stages 1 and 2 don't really
+
+739
+00:30:19,190 --> 00:30:21,170
+let you scale memory at all.
+
+740
+00:30:21,170 --> 00:30:25,270
+And ZeRO stage 2 lets you cut up the parameter memory.
+
+741
+00:30:25,270 --> 00:30:27,990
+But unfortunately, there's activation memory
+
+742
+00:30:27,990 --> 00:30:31,510
+and other kinds of memory use that this does not split up
+
+743
+00:30:31,510 --> 00:30:33,710
+or this does not reduce at all, right.
+
+744
+00:30:33,710 --> 00:30:36,270
+And so we need better ways, more fine grained ways,
+
+745
+00:30:36,270 --> 00:30:38,590
+of cutting up the model in order to really start
+
+746
+00:30:38,590 --> 00:30:41,290
+pushing down the memory use beyond these points, right.
+
+747
+00:30:41,290 --> 00:30:48,270
+And so this takes us to various model parallelism ideas.
+
+748
+00:30:48,270 --> 00:30:49,990
+And so model parallelism is going
+
+749
+00:30:49,990 --> 00:30:53,910
+to be this idea of essentially like FSDP,
+
+750
+00:30:53,910 --> 00:30:57,070
+we're going to split up the parameters across GPUs.
+
+751
+00:30:57,070 --> 00:30:59,430
+But I think the important conceptual difference
+
+752
+00:30:59,430 --> 00:31:02,990
+between what we talked about and what we will talk about next
+
+753
+00:31:02,990 --> 00:31:05,550
+is that now we are going to communicate activations.
+
+754
+00:31:05,550 --> 00:31:07,910
+Right, in FSDP, we cut up the parameters.
+
+755
+00:31:07,910 --> 00:31:10,250
+But in some sense, it was just a wrapper.
+
+756
+00:31:10,250 --> 00:31:12,365
+We were still doing the normal computation.
+
+757
+00:31:12,365 --> 00:31:14,990
+We were just sending parameters back and forth before doing it.
+
+758
+00:31:14,990 --> 00:31:17,373
+Right, so parameters were the things flying around.
+
+759
+00:31:17,373 --> 00:31:18,790
+Now what we're going to do instead
+
+760
+00:31:18,790 --> 00:31:20,550
+is we're going to communicate activations
+
+761
+00:31:20,550 --> 00:31:21,510
+back and forth, right.
+
+762
+00:31:21,510 --> 00:31:24,530
+So if, for example, one layer lives on GPU 0,
+
+763
+00:31:24,530 --> 00:31:26,295
+the next one lives on GPU 1.
+
+764
+00:31:26,295 --> 00:31:27,670
+Right, what I have to communicate
+
+765
+00:31:27,670 --> 00:31:29,850
+is the activation of the layer in between.
+
+766
+00:31:29,850 --> 00:31:32,370
+Right, so that's going to be the big difference.
+
+767
+00:31:32,370 --> 00:31:36,110
+And this will involve pipeline parallel, which is cutting up
+
+768
+00:31:36,110 --> 00:31:39,450
+layers, tensor parallel, which is cutting up matrices,
+
+769
+00:31:39,450 --> 00:31:41,630
+and expert parallel, which is sharding experts
+
+770
+00:31:41,630 --> 00:31:42,810
+into different places.
+
+771
+00:31:42,810 --> 00:31:45,690
+Right, and Percy's talked about tensor parallel already,
+
+772
+00:31:45,690 --> 00:31:49,390
+so you have roughly some mental model of this.
+
+773
+00:31:49,390 --> 00:31:52,390
+I'll start by talking about pipeline parallel or layer
+
+774
+00:31:52,390 --> 00:31:54,470
+wise parallel.
+
+775
+00:31:54,470 --> 00:31:56,450
+This is, I think, conceptually very simple.
+
+776
+00:31:56,450 --> 00:31:59,715
+Back in the days when I first learned about parallelism,
+
+777
+00:31:59,715 --> 00:32:01,090
+I was like, ah, yes, it's simple.
+
+778
+00:32:01,090 --> 00:32:03,340
+Just cut up the layers and put them on different GPUs.
+
+779
+00:32:03,340 --> 00:32:05,270
+Right, very simple thing.
+
+780
+00:32:05,270 --> 00:32:07,570
+And so you're going to pass activations forward
+
+781
+00:32:07,570 --> 00:32:09,070
+in the forward pass, and then you're
+
+782
+00:32:09,070 --> 00:32:10,630
+going to pass like partial gradients
+
+783
+00:32:10,630 --> 00:32:13,230
+backwards in the backward pass.
+
+784
+00:32:13,230 --> 00:32:15,690
+Now, OK, if I do this, what will happen?
+
+785
+00:32:15,690 --> 00:32:18,310
+You will get a terrible looking picture like this.
+
+786
+00:32:18,310 --> 00:32:19,250
+Very, very depressing.
+
+787
+00:32:19,250 --> 00:32:23,880
+I have four accelerators, each handling a quarter of the model.
+
+788
+00:32:23,880 --> 00:32:26,130
+And so what computation happens as a function of time.
+
+789
+00:32:26,130 --> 00:32:28,090
+So time is sweeping from left to right.
+
+790
+00:32:28,090 --> 00:32:30,990
+And the different accelerators are the different rows.
+
+791
+00:32:30,990 --> 00:32:34,910
+So first, my zeroth accelerator at the bottom here,
+
+792
+00:32:34,910 --> 00:32:37,602
+that's handling the first layer will do some computation.
+
+793
+00:32:37,602 --> 00:32:38,810
+And then it will stop, right.
+
+794
+00:32:38,810 --> 00:32:41,370
+And then it will hand off the computation to the second one.
+
+795
+00:32:41,370 --> 00:32:43,830
+And then it will do nothing for the rest of time
+
+796
+00:32:43,830 --> 00:32:44,672
+until the very end.
+
+797
+00:32:44,672 --> 00:32:47,130
+And then I will basically be passing things back and forth.
+
+798
+00:32:47,130 --> 00:32:49,390
+And one GPU will be active at a time.
+
+799
+00:32:49,390 --> 00:32:51,430
+And then coming backwards, one GPU
+
+800
+00:32:51,430 --> 00:32:54,590
+will be active handling the backward pass at a time.
+
+801
+00:32:54,590 --> 00:32:57,170
+And so most of the time, my GPUs are idle.
+
+802
+00:32:57,170 --> 00:33:00,950
+My utilization is truly, truly terrible.
+
+803
+00:33:00,950 --> 00:33:02,410
+And this is called a bubble.
+
+804
+00:33:02,410 --> 00:33:06,150
+It's the part of the pipeline where you're not doing anything.
+
+805
+00:33:06,150 --> 00:33:09,750
+And the solution to this is to essentially do
+
+806
+00:33:09,750 --> 00:33:11,830
+a batching or pipelining.
+
+807
+00:33:11,830 --> 00:33:15,005
+So instead of doing a simple one layer after another,
+
+808
+00:33:15,005 --> 00:33:16,630
+you're going to have a pipeline, right.
+
+809
+00:33:16,630 --> 00:33:18,890
+Where, in this case, in this picture here,
+
+810
+00:33:18,890 --> 00:33:20,730
+you have four elements to be processed.
+
+811
+00:33:20,730 --> 00:33:24,430
+And as soon as you process one, you start on the next element,
+
+812
+00:33:24,430 --> 00:33:26,310
+and then you pass off the one that's already
+
+813
+00:33:26,310 --> 00:33:27,510
+done to your next layer.
+
+814
+00:33:27,510 --> 00:33:30,630
+Right, so you can do this to essentially pass elements
+
+815
+00:33:30,630 --> 00:33:33,390
+upwards and then back downwards.
+
+816
+00:33:33,390 --> 00:33:37,510
+And so if you want to make this reasonable, then what you need
+
+817
+00:33:37,510 --> 00:33:40,470
+is the ratio of essentially this bubble
+
+818
+00:33:40,470 --> 00:33:41,610
+time to the useful compute.
+
+819
+00:33:41,610 --> 00:33:43,310
+The utilization, in some sense, is
+
+820
+00:33:43,310 --> 00:33:47,770
+going to be the number of stages divided by this micro-batches.
+
+821
+00:33:47,770 --> 00:33:50,670
+And so we need a huge batch size in order
+
+822
+00:33:50,670 --> 00:33:52,850
+to reduce this bubble towards 0.
+
+823
+00:33:52,850 --> 00:33:55,210
+Right, so if we want our bubble to be 0,
+
+824
+00:33:55,210 --> 00:33:59,430
+it's going to go down as 1 over the microbatch size.
+
+825
+00:33:59,430 --> 00:34:03,170
+This is why I said batch sizes are useful resource.
+
+826
+00:34:03,170 --> 00:34:05,590
+Because now we can spend it in a different way, which
+
+827
+00:34:05,590 --> 00:34:10,230
+is to pipeline more to reduce the amount of idle time
+
+828
+00:34:10,230 --> 00:34:13,219
+in pipeline parallel.
+
+829
+00:34:13,219 --> 00:34:15,620
+OK, so pipelines are terrible.
+
+830
+00:34:15,620 --> 00:34:17,420
+And by folklore, people say things
+
+831
+00:34:17,420 --> 00:34:20,237
+like, parallelization code looks reasonable
+
+832
+00:34:20,237 --> 00:34:21,820
+and people can understand it until you
+
+833
+00:34:21,820 --> 00:34:23,980
+implement pipeline parallel.
+
+834
+00:34:23,980 --> 00:34:25,840
+So why do we do pipeline parallel?
+
+835
+00:34:25,840 --> 00:34:28,420
+Well, pipelines can save memory compared to DDP.
+
+836
+00:34:28,420 --> 00:34:30,780
+Because we've cut up layers, and you can also compose
+
+837
+00:34:30,780 --> 00:34:31,880
+this with data parallel.
+
+838
+00:34:31,880 --> 00:34:33,739
+So you can do both.
+
+839
+00:34:33,739 --> 00:34:37,340
+But the other reason why this is a very important idea to learn,
+
+840
+00:34:37,340 --> 00:34:39,699
+and you will always have a pipeline in certain kinds
+
+841
+00:34:39,699 --> 00:34:42,179
+of topologies, is that it has very good communication
+
+842
+00:34:42,179 --> 00:34:45,699
+properties compared to both FSDP and compared to any other kinds
+
+843
+00:34:45,699 --> 00:34:47,300
+of things you can do.
+
+844
+00:34:47,300 --> 00:34:51,040
+It only depends on activations, like b times s times h.
+
+845
+00:34:51,040 --> 00:34:52,405
+It is also point to point.
+
+846
+00:34:52,405 --> 00:34:54,280
+One layer is going to communicate to another.
+
+847
+00:34:54,280 --> 00:34:55,620
+It's not all to all.
+
+848
+00:34:55,620 --> 00:34:58,360
+And so depending on how you sequence these things,
+
+849
+00:34:58,360 --> 00:35:01,980
+they can be a very efficient way to utilize your network.
+
+850
+00:35:01,980 --> 00:35:03,900
+So in practice, what we're going to do
+
+851
+00:35:03,900 --> 00:35:06,820
+is that pipelines are going to live on the slowest networking
+
+852
+00:35:06,820 --> 00:35:07,320
+links.
+
+853
+00:35:07,320 --> 00:35:11,100
+So if you have multiple data centers or multiple pods that
+
+854
+00:35:11,100 --> 00:35:12,980
+are slower to talk to, you're going
+
+855
+00:35:12,980 --> 00:35:15,920
+to parallelize across those two using pipelined parallel,
+
+856
+00:35:15,920 --> 00:35:17,580
+because that's the most communication
+
+857
+00:35:17,580 --> 00:35:22,760
+efficient parallelism that you can bring to bear here.
+
+858
+00:35:22,760 --> 00:35:23,260
+OK.
+
+859
+00:35:23,260 --> 00:35:26,780
+And as I said, pipeline performance
+
+860
+00:35:26,780 --> 00:35:28,600
+is really dependent on batch size.
+
+861
+00:35:28,600 --> 00:35:30,662
+So I'll point out this paper repeatedly,
+
+862
+00:35:30,662 --> 00:35:32,120
+but I'll mention which one this is.
+
+863
+00:35:32,120 --> 00:35:35,200
+Now this is the Megatron paper from NVIDIA.
+
+864
+00:35:35,200 --> 00:35:38,780
+They have a bunch of really lovely parameter sweeps of what
+
+865
+00:35:38,780 --> 00:35:41,300
+happens to utilization as a function
+
+866
+00:35:41,300 --> 00:35:44,620
+of different configurations you can do.
+
+867
+00:35:44,620 --> 00:35:48,500
+So if you have large batch sizes and you pick a large pipeline
+
+868
+00:35:48,500 --> 00:35:50,700
+size, you can get pretty good utilization
+
+869
+00:35:50,700 --> 00:35:54,060
+close to not doing pipeline parallel at all.
+
+870
+00:35:54,060 --> 00:35:56,300
+But you need the big batch sizes in order
+
+871
+00:35:56,300 --> 00:35:58,358
+to be able to keep utilization up.
+
+872
+00:35:58,358 --> 00:35:59,900
+Otherwise, pipeline parallel is going
+
+873
+00:35:59,900 --> 00:36:03,472
+to rapidly degrade your utilization and performance.
+
+874
+00:36:03,472 --> 00:36:05,180
+Actually, I'm going to pause for a moment
+
+875
+00:36:05,180 --> 00:36:08,620
+here to ask questions, because the next slide is complicated.
+
+876
+00:36:08,620 --> 00:36:09,560
+Yes?
+
+877
+00:36:09,560 --> 00:36:12,020
+So you mentioned on the previous slide
+
+878
+00:36:12,020 --> 00:36:14,720
+that pipelines have good communication properties,
+
+879
+00:36:14,720 --> 00:36:16,220
+like the FSPD.
+
+880
+00:36:16,220 --> 00:36:19,740
+What is the specific mechanism for why that is?
+
+881
+00:36:19,740 --> 00:36:22,400
+It's a smaller amount of stuff that's being communicated.
+
+882
+00:36:22,400 --> 00:36:25,720
+So it's batch times sequence length times hidden.
+
+883
+00:36:25,720 --> 00:36:27,700
+And that's almost always a smaller amount
+
+884
+00:36:27,700 --> 00:36:30,700
+of data than attempting to communicate a whole parameter
+
+885
+00:36:30,700 --> 00:36:32,820
+matrix, right.
+
+886
+00:36:35,380 --> 00:36:38,140
+So people have tried to figure out
+
+887
+00:36:38,140 --> 00:36:41,780
+much more clever ways of reducing
+
+888
+00:36:41,780 --> 00:36:43,760
+the amount of pipeline sizes.
+
+889
+00:36:43,760 --> 00:36:46,900
+And you can do clever things that
+
+890
+00:36:46,900 --> 00:36:48,940
+cut up the different stages of what
+
+891
+00:36:48,940 --> 00:36:51,100
+you're doing for different layers
+
+892
+00:36:51,100 --> 00:36:52,600
+or different micro-batches.
+
+893
+00:36:52,600 --> 00:36:55,260
+So you can sequence different forward pass elements
+
+894
+00:36:55,260 --> 00:36:57,740
+in between different backwards pass elements.
+
+895
+00:36:57,740 --> 00:36:59,700
+And by doing clever scheduling, you
+
+896
+00:36:59,700 --> 00:37:01,920
+can further reduce the bubble size.
+
+897
+00:37:01,920 --> 00:37:03,600
+This was taken from the DeepSeek paper.
+
+898
+00:37:03,600 --> 00:37:05,700
+So by really cleverly manipulating
+
+899
+00:37:05,700 --> 00:37:07,880
+when you're doing forward and backward computation,
+
+900
+00:37:07,880 --> 00:37:13,100
+you can get a little bit better in terms of the bubble size.
+
+901
+00:37:13,100 --> 00:37:16,060
+But I think the even more clever thing that you can do,
+
+902
+00:37:16,060 --> 00:37:19,460
+which is called zero bubble pipelining,
+
+903
+00:37:19,460 --> 00:37:22,380
+is not really about scheduling per se.
+
+904
+00:37:22,380 --> 00:37:25,060
+But it's actually about thinking carefully
+
+905
+00:37:25,060 --> 00:37:28,220
+about the structure of your backward pass.
+
+906
+00:37:28,220 --> 00:37:30,100
+So in the backward pass, there's really
+
+907
+00:37:30,100 --> 00:37:32,180
+two things that have to happen.
+
+908
+00:37:32,180 --> 00:37:34,340
+If you think about it, you're going backwards
+
+909
+00:37:34,340 --> 00:37:35,437
+in your computation graph.
+
+910
+00:37:35,437 --> 00:37:37,520
+And as you do that, you're going to do two things.
+
+911
+00:37:37,520 --> 00:37:39,380
+One is going to be you're going to propagate
+
+912
+00:37:39,380 --> 00:37:42,480
+your partial derivatives further down your computation graph.
+
+913
+00:37:42,480 --> 00:37:45,220
+So remember, back propagation, you start at the end,
+
+914
+00:37:45,220 --> 00:37:47,800
+and you're propagating these partial derivatives back, right.
+
+915
+00:37:47,800 --> 00:37:49,110
+So you have to do that.
+
+916
+00:37:49,110 --> 00:37:50,860
+But you also want to compute the gradients
+
+917
+00:37:50,860 --> 00:37:52,080
+for the current weight.
+
+918
+00:37:52,080 --> 00:37:53,663
+Right, so you have two things that you
+
+919
+00:37:53,663 --> 00:37:55,480
+do at every node of your computation graph.
+
+920
+00:37:55,480 --> 00:37:57,100
+You're going to propagate backwards,
+
+921
+00:37:57,100 --> 00:38:00,140
+and you're going to compute the derivative of your weight.
+
+922
+00:38:00,140 --> 00:38:02,260
+The important thing about thinking
+
+923
+00:38:02,260 --> 00:38:06,220
+about this compute graph is actually, one of these two
+
+924
+00:38:06,220 --> 00:38:08,740
+is really important for pipelines.
+
+925
+00:38:08,740 --> 00:38:11,460
+And the other one, you can do whenever.
+
+926
+00:38:11,460 --> 00:38:13,080
+Propagating the partials backwards,
+
+927
+00:38:13,080 --> 00:38:14,340
+right, that's very important.
+
+928
+00:38:14,340 --> 00:38:17,500
+Because your next stage can't do any work until you've propagated
+
+929
+00:38:17,500 --> 00:38:18,605
+that signal back.
+
+930
+00:38:18,605 --> 00:38:19,980
+On the other hand, the derivative
+
+931
+00:38:19,980 --> 00:38:21,620
+with respect to the weights, that
+
+932
+00:38:21,620 --> 00:38:23,827
+is a leaf node, so to speak, on this graph.
+
+933
+00:38:23,827 --> 00:38:25,160
+And I can do it whenever, right.
+
+934
+00:38:25,160 --> 00:38:29,400
+And so the clever thing to do now is you separate these two.
+
+935
+00:38:29,400 --> 00:38:31,320
+Right, so you got your B's over here.
+
+936
+00:38:31,320 --> 00:38:35,120
+These B's are the backwards, propagating backwards.
+
+937
+00:38:35,120 --> 00:38:37,340
+And then these W's, these W's are computing
+
+938
+00:38:37,340 --> 00:38:38,640
+the derivative of the weights.
+
+939
+00:38:38,640 --> 00:38:40,140
+And they can happen whenever.
+
+940
+00:38:40,140 --> 00:38:44,000
+So what you do is you compute the B's as quickly as you can.
+
+941
+00:38:44,000 --> 00:38:45,400
+Right, so those come first.
+
+942
+00:38:45,400 --> 00:38:47,460
+And then you can defer the W's until later
+
+943
+00:38:47,460 --> 00:38:50,360
+and do it when you have a gap in your computation.
+
+944
+00:38:50,360 --> 00:38:53,620
+And when you do this, you can basically almost all completely
+
+945
+00:38:53,620 --> 00:38:56,180
+fill up the pipeline.
+
+946
+00:38:56,180 --> 00:38:58,180
+And the zero bubble pipelining thing
+
+947
+00:38:58,180 --> 00:39:01,220
+is very complicated or much more complicated
+
+948
+00:39:01,220 --> 00:39:03,000
+than you would normally like to deal with.
+
+949
+00:39:03,000 --> 00:39:06,060
+But it allows you to almost deal with these pipelining issues
+
+950
+00:39:06,060 --> 00:39:08,740
+almost entirely, depending on essentially the workload
+
+951
+00:39:08,740 --> 00:39:12,900
+involved in the W versus the B, and so on and so forth.
+
+952
+00:39:12,900 --> 00:39:16,280
+But I think having seen this, I was like, oh, this is so clever.
+
+953
+00:39:16,280 --> 00:39:19,460
+Such clever things that you can do with systems.
+
+954
+00:39:19,460 --> 00:39:22,820
+OK, so that was pipelining.
+
+955
+00:39:22,820 --> 00:39:26,220
+Any questions about that?
+
+956
+00:39:26,220 --> 00:39:27,740
+Good.
+
+957
+00:39:27,740 --> 00:39:30,980
+So I think there's a natural analogy
+
+958
+00:39:30,980 --> 00:39:32,640
+or a parallel you can think of.
+
+959
+00:39:32,640 --> 00:39:34,520
+So pipeline parallel is like depth.
+
+960
+00:39:34,520 --> 00:39:36,660
+So your depth, you cut up your network
+
+961
+00:39:36,660 --> 00:39:38,620
+along the depth dimension.
+
+962
+00:39:38,620 --> 00:39:40,560
+But we have two ways that we scale, right.
+
+963
+00:39:40,560 --> 00:39:43,220
+We've got a depth axis and we have a width axis.
+
+964
+00:39:43,220 --> 00:39:46,400
+So what if we start cutting up our model along width, right?
+
+965
+00:39:46,400 --> 00:39:50,580
+So this is tensor parallel, as Percy explained before.
+
+966
+00:39:50,580 --> 00:39:53,380
+And it's really the simple idea that matrix multiplies
+
+967
+00:39:53,380 --> 00:39:56,580
+can be cut up into smaller matrix multiplies, which
+
+968
+00:39:56,580 --> 00:39:58,960
+you then add the partial sums back together.
+
+969
+00:39:58,960 --> 00:40:01,520
+This is really the same idea as tiling as well.
+
+970
+00:40:01,520 --> 00:40:07,660
+So this core primitive just appears many, many times.
+
+971
+00:40:07,660 --> 00:40:09,940
+And so when you do this in practice,
+
+972
+00:40:09,940 --> 00:40:12,260
+right, what does this actually look like?
+
+973
+00:40:12,260 --> 00:40:14,715
+So this is a GeLU that's happening.
+
+974
+00:40:14,715 --> 00:40:15,840
+So what do you normally do?
+
+975
+00:40:15,840 --> 00:40:19,020
+You have your x coming in as input on the very right
+
+976
+00:40:19,020 --> 00:40:20,620
+of this slide here.
+
+977
+00:40:20,620 --> 00:40:23,240
+And then I have a matrix A that I multiply with.
+
+978
+00:40:23,240 --> 00:40:25,420
+I apply my non-linearity GeLU.
+
+979
+00:40:25,420 --> 00:40:28,240
+And then I multiply with B to downproject.
+
+980
+00:40:28,240 --> 00:40:29,580
+And then I output my z.
+
+981
+00:40:29,580 --> 00:40:33,140
+Right, this is the normal serial computation that I do.
+
+982
+00:40:33,140 --> 00:40:34,980
+Now in tensor parallel, what I would do
+
+983
+00:40:34,980 --> 00:40:37,940
+is I would cut out my A into two submatrices, my B
+
+984
+00:40:37,940 --> 00:40:41,380
+into two submatrices, and then I would run the computations
+
+985
+00:40:41,380 --> 00:40:45,180
+in parallel, and I would gather them together at the end.
+
+986
+00:40:45,180 --> 00:40:48,780
+Now, one thing that is important is
+
+987
+00:40:48,780 --> 00:40:51,560
+there's a duality between the forward and backward pass.
+
+988
+00:40:51,560 --> 00:40:56,095
+So in the forward pass, all I do with the x is I copy them twice,
+
+989
+00:40:56,095 --> 00:40:57,720
+and then I run the computation forward.
+
+990
+00:40:57,720 --> 00:41:00,420
+So f is the identity, this f function.
+
+991
+00:41:00,420 --> 00:41:03,730
+And then once I get to the end of my parallel component,
+
+992
+00:41:03,730 --> 00:41:06,410
+the g function, that's an all-reduce that brings them
+
+993
+00:41:06,410 --> 00:41:07,570
+back together, right.
+
+994
+00:41:07,570 --> 00:41:10,050
+But in the backwards pass, as I'm doing my gradients,
+
+995
+00:41:10,050 --> 00:41:11,210
+this is going to flip.
+
+996
+00:41:11,210 --> 00:41:14,147
+My g is going to be on-- sorry, my g is going to be an identity.
+
+997
+00:41:14,147 --> 00:41:15,730
+Right, because the partial derivatives
+
+998
+00:41:15,730 --> 00:41:17,250
+are coming backwards.
+
+999
+00:41:17,250 --> 00:41:19,730
+And then my f are the partials that I
+
+1000
+00:41:19,730 --> 00:41:23,130
+need to sum up in order to get my partial derivatives
+
+1001
+00:41:23,130 --> 00:41:24,737
+at the start of this module.
+
+1002
+00:41:24,737 --> 00:41:26,070
+Right, so they're going to flip.
+
+1003
+00:41:26,070 --> 00:41:28,250
+And this duality is important if you're
+
+1004
+00:41:28,250 --> 00:41:31,970
+going to write tensor parallel.
+
+1005
+00:41:31,970 --> 00:41:33,290
+OK.
+
+1006
+00:41:33,290 --> 00:41:36,470
+And so you might have already noticed, right.
+
+1007
+00:41:36,470 --> 00:41:39,450
+But when we split things, some of the ways
+
+1008
+00:41:39,450 --> 00:41:41,150
+that we are going to be column-wise.
+
+1009
+00:41:41,150 --> 00:41:43,330
+So column-wise, tensor parallel is
+
+1010
+00:41:43,330 --> 00:41:44,990
+going to happen at the inputs.
+
+1011
+00:41:44,990 --> 00:41:48,450
+Right, so the inputs of the MLP, the projections of the attention
+
+1012
+00:41:48,450 --> 00:41:52,650
+are going to be cut up by the columns in each transformer
+
+1013
+00:41:52,650 --> 00:41:53,150
+block.
+
+1014
+00:41:53,150 --> 00:41:55,770
+So this is column-wise cuts.
+
+1015
+00:41:55,770 --> 00:41:57,890
+And then there's going to be row-wise cuts
+
+1016
+00:41:57,890 --> 00:42:00,150
+in the corresponding second stage.
+
+1017
+00:42:00,150 --> 00:42:03,330
+So in the downprojections of the MLP,
+
+1018
+00:42:03,330 --> 00:42:05,030
+as well as the outputs of the attention,
+
+1019
+00:42:05,030 --> 00:42:06,650
+you're going to have a row-wise cut.
+
+1020
+00:42:06,650 --> 00:42:09,850
+And then everything that's a small layer, like a layer
+
+1021
+00:42:09,850 --> 00:42:12,990
+norm or a non-linearity or routers in ML--
+
+1022
+00:42:12,990 --> 00:42:15,850
+sorry, in MoEs, those are all fully replicated
+
+1023
+00:42:15,850 --> 00:42:16,710
+across the machines.
+
+1024
+00:42:16,710 --> 00:42:19,930
+You don't really want to bother with the overhead of cutting
+
+1025
+00:42:19,930 --> 00:42:22,030
+those guys.
+
+1026
+00:42:22,030 --> 00:42:22,530
+OK.
+
+1027
+00:42:22,530 --> 00:42:26,210
+And then, so when do we do tensor parallel?
+
+1028
+00:42:26,210 --> 00:42:31,450
+Tensor parallel is extremely computation hungry.
+
+1029
+00:42:31,450 --> 00:42:34,017
+What you're doing is every time you have a matmul,
+
+1030
+00:42:34,017 --> 00:42:35,850
+you're going to be doing some communication.
+
+1031
+00:42:35,850 --> 00:42:37,170
+Right, you have an all-reduce.
+
+1032
+00:42:37,170 --> 00:42:41,090
+Or in the backwards pass, you have all-reduce here.
+
+1033
+00:42:41,090 --> 00:42:44,330
+One in the G when you're going forward.
+
+1034
+00:42:44,330 --> 00:42:46,130
+And these are activation size, and you're
+
+1035
+00:42:46,130 --> 00:42:48,170
+doing them very frequently.
+
+1036
+00:42:48,170 --> 00:42:50,710
+So this is very communication hungry.
+
+1037
+00:42:50,710 --> 00:42:54,710
+And so you only want to do this within a node.
+
+1038
+00:42:54,710 --> 00:42:58,970
+So for GPUs, GPUs are going to be networked tightly together
+
+1039
+00:42:58,970 --> 00:43:00,690
+in a single box.
+
+1040
+00:43:00,690 --> 00:43:03,370
+And so up to eight, you might be willing to do some tensor
+
+1041
+00:43:03,370 --> 00:43:03,990
+parallel.
+
+1042
+00:43:03,990 --> 00:43:07,150
+Once you go beyond that, you're going to be going cross node.
+
+1043
+00:43:07,150 --> 00:43:10,590
+And those interconnects, those connections, are much slower.
+
+1044
+00:43:10,590 --> 00:43:12,810
+And so you're going to get a big drop in performance
+
+1045
+00:43:12,810 --> 00:43:16,710
+as soon as you hit that point of going beyond a single machine.
+
+1046
+00:43:16,710 --> 00:43:20,130
+So tensor parallel, you should remember as very communication
+
+1047
+00:43:20,130 --> 00:43:20,790
+hungry.
+
+1048
+00:43:20,790 --> 00:43:23,170
+You usually use it in the fastest interconnects
+
+1049
+00:43:23,170 --> 00:43:26,410
+that you have at hand.
+
+1050
+00:43:26,410 --> 00:43:28,530
+And this is the point at which I'm
+
+1051
+00:43:28,530 --> 00:43:31,150
+going to go back to the thing I said about TPUs.
+
+1052
+00:43:31,150 --> 00:43:33,410
+Right, remember for TPUs, you don't really
+
+1053
+00:43:33,410 --> 00:43:36,330
+have this distinction between fast eight GPUs
+
+1054
+00:43:36,330 --> 00:43:37,470
+and next machines.
+
+1055
+00:43:37,470 --> 00:43:39,130
+You just have this big mesh.
+
+1056
+00:43:39,130 --> 00:43:41,650
+And so one of the big advantages that TPU people will
+
+1057
+00:43:41,650 --> 00:43:45,410
+tell you is you can tensor parallel very large numbers
+
+1058
+00:43:45,410 --> 00:43:47,810
+compared to the GPU world, because they're
+
+1059
+00:43:47,810 --> 00:43:51,330
+able to have high bandwidth in this very regular communication
+
+1060
+00:43:51,330 --> 00:43:53,310
+pattern over this mesh.
+
+1061
+00:43:53,310 --> 00:43:54,730
+Right, so that's a big difference
+
+1062
+00:43:54,730 --> 00:43:57,470
+if you're parallelizing between TPUs versus GPUs.
+
+1063
+00:43:57,470 --> 00:44:00,610
+The amount of tensor parallelism you use versus pipeline parallel
+
+1064
+00:44:00,610 --> 00:44:02,850
+will actually be quite different.
+
+1065
+00:44:02,850 --> 00:44:05,430
+So how do we compare these two.
+
+1066
+00:44:05,430 --> 00:44:07,310
+They're both model splitting strategies.
+
+1067
+00:44:07,310 --> 00:44:10,090
+They'll both save on both parameters
+
+1068
+00:44:10,090 --> 00:44:12,610
+and potentially activations.
+
+1069
+00:44:12,610 --> 00:44:15,010
+The pros here of tensor parallel is that there's
+
+1070
+00:44:15,010 --> 00:44:17,370
+no necessarily pipeline bubble.
+
+1071
+00:44:17,370 --> 00:44:19,250
+And if your network's fast enough,
+
+1072
+00:44:19,250 --> 00:44:21,770
+you might be able to get full utilization.
+
+1073
+00:44:21,770 --> 00:44:23,070
+It's also low complexity.
+
+1074
+00:44:23,070 --> 00:44:25,410
+It's just cutting up some matmuls.
+
+1075
+00:44:25,410 --> 00:44:28,790
+But the con is that the communication is much larger.
+
+1076
+00:44:28,790 --> 00:44:31,530
+It used to be that you were doing b times s times h
+
+1077
+00:44:31,530 --> 00:44:33,110
+point to point communication.
+
+1078
+00:44:33,110 --> 00:44:35,690
+Now instead, I'm going to be doing something like a times
+
+1079
+00:44:35,690 --> 00:44:40,730
+b times s times h times roughly one all-reduce communication,
+
+1080
+00:44:40,730 --> 00:44:41,230
+right.
+
+1081
+00:44:41,230 --> 00:44:42,897
+So this is not even just point to point.
+
+1082
+00:44:42,897 --> 00:44:46,010
+This is all to all communication that needs to happen.
+
+1083
+00:44:46,010 --> 00:44:47,810
+So tensor parallel is great.
+
+1084
+00:44:47,810 --> 00:44:50,690
+Whenever we have high speed interconnects, every other time,
+
+1085
+00:44:50,690 --> 00:44:53,490
+we probably want to be using pipeline parallel.
+
+1086
+00:44:53,490 --> 00:44:55,762
+OK.
+
+1087
+00:44:55,762 --> 00:44:58,490
+So the last thing I want to talk about about--
+
+1088
+00:44:58,490 --> 00:45:03,170
+we're talking about memory use, is to really think
+
+1089
+00:45:03,170 --> 00:45:04,730
+more carefully about memory.
+
+1090
+00:45:04,730 --> 00:45:08,010
+I think the most naive view of memory in deep learning
+
+1091
+00:45:08,010 --> 00:45:10,730
+and language modeling is something like, well, memory
+
+1092
+00:45:10,730 --> 00:45:11,870
+is just parameters.
+
+1093
+00:45:11,870 --> 00:45:13,328
+That's this green bit over here.
+
+1094
+00:45:13,328 --> 00:45:15,370
+Right, you have a certain number of bits you need
+
+1095
+00:45:15,370 --> 00:45:16,770
+to store for your parameters.
+
+1096
+00:45:16,770 --> 00:45:19,000
+That's it.
+
+1097
+00:45:19,000 --> 00:45:20,750
+I've already talked about optimizer state,
+
+1098
+00:45:20,750 --> 00:45:23,713
+which is important, which is this yellow box over here.
+
+1099
+00:45:23,713 --> 00:45:25,130
+But if you look at this plot, this
+
+1100
+00:45:25,130 --> 00:45:30,010
+is actual memory use as profiled in one of the PyTorch profilers.
+
+1101
+00:45:30,010 --> 00:45:33,470
+You'll find actually that this is not really the whole story.
+
+1102
+00:45:33,470 --> 00:45:35,730
+There's a lot of dynamic memory that needs
+
+1103
+00:45:35,730 --> 00:45:38,367
+to exist in a computation.
+
+1104
+00:45:38,367 --> 00:45:39,950
+You need to store all the activations.
+
+1105
+00:45:39,950 --> 00:45:41,890
+These are these big red bumps over here.
+
+1106
+00:45:41,890 --> 00:45:43,590
+And then as you compute your gradients,
+
+1107
+00:45:43,590 --> 00:45:46,250
+you need to store them in your backward sweep, right.
+
+1108
+00:45:46,250 --> 00:45:48,930
+And so really maximum memory usage
+
+1109
+00:45:48,930 --> 00:45:52,350
+happens a little bit after the maximum activation point.
+
+1110
+00:45:52,350 --> 00:45:55,030
+After you start sweeping backwards on your gradient,
+
+1111
+00:45:55,030 --> 00:45:57,870
+but you still need to compute a lot-- keep your activations,
+
+1112
+00:45:57,870 --> 00:46:00,070
+those are usually the maximum memory points, right.
+
+1113
+00:46:00,070 --> 00:46:03,470
+So to reduce this, maybe we need to deal with this big red hump,
+
+1114
+00:46:03,470 --> 00:46:06,290
+this activation.
+
+1115
+00:46:06,290 --> 00:46:12,090
+And if you start looking at more modern workloads for language
+
+1116
+00:46:12,090 --> 00:46:14,050
+models, you start to find that as you
+
+1117
+00:46:14,050 --> 00:46:16,242
+get to bigger and bigger parameters--
+
+1118
+00:46:16,242 --> 00:46:17,950
+forget the column that says present work.
+
+1119
+00:46:17,950 --> 00:46:19,630
+I'll talk about that in a moment here.
+
+1120
+00:46:19,630 --> 00:46:22,150
+But if you look at just the baseline columns of this plot,
+
+1121
+00:46:22,150 --> 00:46:24,890
+as you go to bigger models, for moderately large sequence
+
+1122
+00:46:24,890 --> 00:46:27,370
+lengths, your activations are just
+
+1123
+00:46:27,370 --> 00:46:30,690
+going to dwarf the parameter memory that you need.
+
+1124
+00:46:30,690 --> 00:46:33,850
+And so any memory saving strategy
+
+1125
+00:46:33,850 --> 00:46:37,910
+has to reason about activations in order to be fully effective.
+
+1126
+00:46:37,910 --> 00:46:40,670
+We can't just deal with parameter memory.
+
+1127
+00:46:40,670 --> 00:46:44,570
+That's not really sufficient for us.
+
+1128
+00:46:44,570 --> 00:46:47,590
+So if we're storing everything-- and this is a good,
+
+1129
+00:46:47,590 --> 00:46:51,650
+I don't know, statistic or rule of thumb to start with.
+
+1130
+00:46:51,650 --> 00:46:53,490
+If we need to store everything, the amount
+
+1131
+00:46:53,490 --> 00:46:56,240
+of activations that we need is going
+
+1132
+00:46:56,240 --> 00:47:00,100
+to be something like 34 times s times b times h,
+
+1133
+00:47:00,100 --> 00:47:03,080
+and that's going to be sequence length times batch
+
+1134
+00:47:03,080 --> 00:47:08,640
+size times hidden dimension size plus 5 times as over h.
+
+1135
+00:47:08,640 --> 00:47:12,640
+as is attention heads times sequence length divided
+
+1136
+00:47:12,640 --> 00:47:14,140
+by hidden dimension size.
+
+1137
+00:47:14,140 --> 00:47:17,800
+And this sbh dependence, right, is fundamental,
+
+1138
+00:47:17,800 --> 00:47:20,200
+because we expect to have to store something
+
+1139
+00:47:20,200 --> 00:47:21,833
+for every element of the sequence.
+
+1140
+00:47:21,833 --> 00:47:24,000
+We expect to have to store something for every batch
+
+1141
+00:47:24,000 --> 00:47:26,560
+element, and we expect to have to store something
+
+1142
+00:47:26,560 --> 00:47:27,880
+for every hidden dim size.
+
+1143
+00:47:27,880 --> 00:47:30,600
+Right, so we're going to see this sbh term repeatedly
+
+1144
+00:47:30,600 --> 00:47:33,240
+as we try to go through different ways of reducing
+
+1145
+00:47:33,240 --> 00:47:35,720
+activation memory and accounting for the total amount
+
+1146
+00:47:35,720 --> 00:47:36,992
+of activation memory.
+
+1147
+00:47:36,992 --> 00:47:39,200
+And in case you're curious where the terms come from,
+
+1148
+00:47:39,200 --> 00:47:42,173
+this odd looking term, the 5 as over h
+
+1149
+00:47:42,173 --> 00:47:44,340
+is going to come from the quadratic attention terms,
+
+1150
+00:47:44,340 --> 00:47:46,120
+including the dropout terms.
+
+1151
+00:47:46,120 --> 00:47:48,240
+And we can drop this term via recomputation
+
+1152
+00:47:48,240 --> 00:47:49,580
+if we do flash attention.
+
+1153
+00:47:52,360 --> 00:47:52,960
+OK.
+
+1154
+00:47:52,960 --> 00:47:55,120
+Now what if we did tensor parallel?
+
+1155
+00:47:55,120 --> 00:47:57,760
+One of the promises that I made to you
+
+1156
+00:47:57,760 --> 00:47:59,600
+in talking about model parallelism
+
+1157
+00:47:59,600 --> 00:48:03,680
+was that we could reduce activation quite a bit.
+
+1158
+00:48:03,680 --> 00:48:05,620
+So now let's think about what happens.
+
+1159
+00:48:05,620 --> 00:48:07,620
+Well, tensor parallel is going to split out
+
+1160
+00:48:07,620 --> 00:48:10,380
+the matrix multiplies in attention and MLPs.
+
+1161
+00:48:10,380 --> 00:48:11,760
+So which parts are those?
+
+1162
+00:48:11,760 --> 00:48:18,520
+Well, the MLPs are 24 of those 34 that I talked about before.
+
+1163
+00:48:18,520 --> 00:48:22,280
+And the attention heads are 5 as over ht.
+
+1164
+00:48:22,280 --> 00:48:24,280
+Right, the second term over here.
+
+1165
+00:48:24,280 --> 00:48:27,580
+Now, I can reduce that by t, my tensor parallel size.
+
+1166
+00:48:27,580 --> 00:48:28,900
+And that's good.
+
+1167
+00:48:28,900 --> 00:48:30,040
+This is not bad.
+
+1168
+00:48:30,040 --> 00:48:33,200
+Because I've taken most of the memory,
+
+1169
+00:48:33,200 --> 00:48:36,820
+and I've made it scale linearly with the tensor parallel size t.
+
+1170
+00:48:36,820 --> 00:48:38,880
+So that's good.
+
+1171
+00:48:38,880 --> 00:48:42,080
+But it turns out that there are other things that you do.
+
+1172
+00:48:42,080 --> 00:48:43,460
+You might have a layer norm.
+
+1173
+00:48:43,460 --> 00:48:44,840
+You might have a dropout.
+
+1174
+00:48:44,840 --> 00:48:47,800
+You need to keep the inputs to attention and the MLP.
+
+1175
+00:48:47,800 --> 00:48:49,800
+Right, because the inputs to each layers
+
+1176
+00:48:49,800 --> 00:48:53,720
+need to be stored as residuals for the backwards pass.
+
+1177
+00:48:53,720 --> 00:48:56,640
+And unfortunately, these are not reduced
+
+1178
+00:48:56,640 --> 00:48:58,060
+with your tensor parallel size.
+
+1179
+00:48:58,060 --> 00:49:00,560
+Right, tensor parallel does not split the layer norm.
+
+1180
+00:49:00,560 --> 00:49:03,660
+And therefore, it does not split the activation for these guys.
+
+1181
+00:49:03,660 --> 00:49:06,720
+So this is unfortunate, because you were hoping that if you had
+
+1182
+00:49:06,720 --> 00:49:10,405
+1,000 different GPUs in tensor parallel because you're Google,
+
+1183
+00:49:10,405 --> 00:49:12,780
+you might be able to reduce this activation dramatically.
+
+1184
+00:49:12,780 --> 00:49:14,800
+The unfortunate reality is that you're still
+
+1185
+00:49:14,800 --> 00:49:20,840
+going to suffer a 10 times sbh penalty for doing all of this.
+
+1186
+00:49:20,840 --> 00:49:23,240
+And so the last part that's usually
+
+1187
+00:49:23,240 --> 00:49:25,960
+used in composition with tensor parallel
+
+1188
+00:49:25,960 --> 00:49:28,320
+is this idea of sequence parallel.
+
+1189
+00:49:28,320 --> 00:49:30,360
+This is an extremely misleading name,
+
+1190
+00:49:30,360 --> 00:49:33,507
+because usually when I say sequence parallel, actually
+
+1191
+00:49:33,507 --> 00:49:35,840
+there's a thing called context parallel that is actually
+
+1192
+00:49:35,840 --> 00:49:37,740
+more natural for this name.
+
+1193
+00:49:37,740 --> 00:49:40,860
+But sequence parallel is the following idea.
+
+1194
+00:49:40,860 --> 00:49:43,080
+So what you're going to do is we have
+
+1195
+00:49:43,080 --> 00:49:45,920
+these remaining terms, 10 sbh.
+
+1196
+00:49:45,920 --> 00:49:48,778
+And these terms are very lightweight.
+
+1197
+00:49:48,778 --> 00:49:49,820
+They're like layer norms.
+
+1198
+00:49:49,820 --> 00:49:52,480
+They're stuff that doesn't have much computation.
+
+1199
+00:49:52,480 --> 00:49:55,240
+And what I'm going to do is I'm going to split them up somehow.
+
+1200
+00:49:55,240 --> 00:49:57,800
+And I'm going to split them up over the sequence axis
+
+1201
+00:49:57,800 --> 00:50:01,200
+rather than over the hidden axis.
+
+1202
+00:50:01,200 --> 00:50:04,200
+And this is going to then involve
+
+1203
+00:50:04,200 --> 00:50:08,720
+all-gathers and reduce-scatters before every operation where
+
+1204
+00:50:08,720 --> 00:50:10,760
+we need these.
+
+1205
+00:50:10,760 --> 00:50:13,475
+And if you think about it, this is very reminiscent of FSDP.
+
+1206
+00:50:13,475 --> 00:50:15,100
+Right, we have this thing that we need.
+
+1207
+00:50:15,100 --> 00:50:18,100
+We need attention-- sorry, we need activations at some point.
+
+1208
+00:50:18,100 --> 00:50:20,300
+We need to compute the activations going forward,
+
+1209
+00:50:20,300 --> 00:50:22,600
+and we need the activations when we sweep backwards
+
+1210
+00:50:22,600 --> 00:50:23,725
+for the derivatives, right.
+
+1211
+00:50:23,725 --> 00:50:25,760
+But we don't need them now.
+
+1212
+00:50:25,760 --> 00:50:28,400
+So we're going to store them by splitting them up
+
+1213
+00:50:28,400 --> 00:50:31,620
+across the sequence axis and materializing them on demand.
+
+1214
+00:50:31,620 --> 00:50:33,800
+So I would say this is conceptually very
+
+1215
+00:50:33,800 --> 00:50:37,417
+similar to the FSDP style idea, where we're storing them
+
+1216
+00:50:37,417 --> 00:50:39,000
+in this sharded format, and then we're
+
+1217
+00:50:39,000 --> 00:50:41,640
+gathering them as we need them.
+
+1218
+00:50:41,640 --> 00:50:44,180
+And then as I said before, there's a duality to this.
+
+1219
+00:50:44,180 --> 00:50:47,160
+So in the forward pass, g is an all-gather. g
+
+1220
+00:50:47,160 --> 00:50:48,660
+bar is a reduce-scatter.
+
+1221
+00:50:48,660 --> 00:50:51,173
+In the backwards pass, this is going to be reversed.
+
+1222
+00:50:51,173 --> 00:50:52,840
+Right, the all-gather and reduce-scatter
+
+1223
+00:50:52,840 --> 00:50:57,600
+are going to be reversed between g and g bar.
+
+1224
+00:50:57,600 --> 00:51:00,380
+So if I do this now, what do I get?
+
+1225
+00:51:00,380 --> 00:51:03,060
+Well, remember, with the no parallelism setting,
+
+1226
+00:51:03,060 --> 00:51:06,940
+the very first part, what I told you was you get this activation
+
+1227
+00:51:06,940 --> 00:51:07,440
+memory.
+
+1228
+00:51:07,440 --> 00:51:11,120
+Use 34 times sbh with an attention head component.
+
+1229
+00:51:11,120 --> 00:51:14,040
+With tensor parallel, I get to divide the MLP
+
+1230
+00:51:14,040 --> 00:51:17,800
+part and the attention part by t,
+
+1231
+00:51:17,800 --> 00:51:21,680
+but not all these other pointwise ops that I have.
+
+1232
+00:51:21,680 --> 00:51:23,760
+If I do sequence parallel, I've split these
+
+1233
+00:51:23,760 --> 00:51:25,440
+up by my accelerators as well, just
+
+1234
+00:51:25,440 --> 00:51:28,040
+in the sequence axis, which gives me
+
+1235
+00:51:28,040 --> 00:51:30,800
+now fully linear dependence.
+
+1236
+00:51:30,800 --> 00:51:32,940
+If I do activation recomputation,
+
+1237
+00:51:32,940 --> 00:51:34,560
+I can even drop this second term.
+
+1238
+00:51:34,560 --> 00:51:37,280
+Because remember, this is just the storage
+
+1239
+00:51:37,280 --> 00:51:38,660
+that I need for the softmax.
+
+1240
+00:51:38,660 --> 00:51:40,720
+So I can drop this through recomputation, which
+
+1241
+00:51:40,720 --> 00:51:44,577
+gives you sbh times 34 over t.
+
+1242
+00:51:44,577 --> 00:51:46,160
+This is nice to remember, because this
+
+1243
+00:51:46,160 --> 00:51:49,380
+is the lower bound of what you can achieve,
+
+1244
+00:51:49,380 --> 00:51:53,327
+reasonably speaking, for normal training for activation memory.
+
+1245
+00:51:53,327 --> 00:51:55,160
+And so if you want to do things like compute
+
+1246
+00:51:55,160 --> 00:51:57,845
+by hand whether your model will fit into a GPU,
+
+1247
+00:51:57,845 --> 00:51:59,220
+this is a good thing to remember.
+
+1248
+00:51:59,220 --> 00:52:01,740
+You need at least this much for activation memory.
+
+1249
+00:52:01,740 --> 00:52:04,700
+You're going to need some memory for your optimizer state,
+
+1250
+00:52:04,700 --> 00:52:06,830
+and you will need some memory for your parameters
+
+1251
+00:52:06,830 --> 00:52:07,580
+and your gradient.
+
+1252
+00:52:07,580 --> 00:52:09,120
+And once you have those things, you
+
+1253
+00:52:09,120 --> 00:52:11,720
+have a rough sense of how much memory
+
+1254
+00:52:11,720 --> 00:52:14,880
+you're going to need for your model.
+
+1255
+00:52:14,880 --> 00:52:16,620
+OK, I'm going to stop here for a moment.
+
+1256
+00:52:16,620 --> 00:52:19,240
+I have talked through both pipeline and tensor
+
+1257
+00:52:19,240 --> 00:52:21,760
+parallel at this point, and so people might be a little bit
+
+1258
+00:52:21,760 --> 00:52:22,580
+confused.
+
+1259
+00:52:22,580 --> 00:52:24,080
+And we can talk through a few things
+
+1260
+00:52:24,080 --> 00:52:26,100
+before I move on to expert parallel.
+
+1261
+00:52:30,600 --> 00:52:31,560
+Good.
+
+1262
+00:52:33,486 --> 00:52:35,320
+[INAUDIBLE]
+
+1263
+00:52:31,560 --> 00:52:33,486
+Oh, yes?
+
+1264
+00:52:35,320 --> 00:52:38,415
+24 over t is the MLP part.
+
+1265
+00:52:38,415 --> 00:52:44,040
+The MLP part cannot be optimized through the representation?
+
+1266
+00:52:44,040 --> 00:52:46,540
+You can recompute the MLP as well.
+
+1267
+00:52:46,540 --> 00:52:48,550
+You can do a lot more computation
+
+1268
+00:52:48,550 --> 00:52:50,710
+than what is listed here.
+
+1269
+00:52:50,710 --> 00:52:53,510
+But recomputation what is listed here
+
+1270
+00:52:53,510 --> 00:52:55,530
+is very computationally expensive,
+
+1271
+00:52:55,530 --> 00:52:58,910
+like a recomputation for MLP involves running the MLP again
+
+1272
+00:52:58,910 --> 00:53:01,950
+in the backward pass, which you probably do not want to do.
+
+1273
+00:53:04,880 --> 00:53:08,210
+Recomputation for attention is generally cheaper, yeah.
+
+1274
+00:53:08,210 --> 00:53:09,910
+Because you do it time-wise as well.
+
+1275
+00:53:09,910 --> 00:53:12,370
+And also you don't want to pay the quadratic cost.
+
+1276
+00:53:12,370 --> 00:53:13,790
+That's quite expensive.
+
+1277
+00:53:13,790 --> 00:53:15,310
+The quadratic cost.
+
+1278
+00:53:15,310 --> 00:53:16,830
+That's quite painful, yeah.
+
+1279
+00:53:19,710 --> 00:53:21,590
+Cool, all right.
+
+1280
+00:53:21,590 --> 00:53:25,710
+So I'm going to now talk about the last ingredient
+
+1281
+00:53:25,710 --> 00:53:28,642
+in the standard parallelism toolbox, which
+
+1282
+00:53:28,642 --> 00:53:29,850
+is expert parallelism, right.
+
+1283
+00:53:29,850 --> 00:53:34,310
+Now that MoEs are very standard part of the toolkit,
+
+1284
+00:53:34,310 --> 00:53:37,250
+most big models are MoEs these days.
+
+1285
+00:53:37,250 --> 00:53:39,910
+And that allows us to take advantage
+
+1286
+00:53:39,910 --> 00:53:43,470
+of one of their big benefits, which is expert parallelism.
+
+1287
+00:53:43,470 --> 00:53:47,030
+And expert parallelism, I think of myself
+
+1288
+00:53:47,030 --> 00:53:50,310
+as being something analogous to tensor parallel.
+
+1289
+00:53:50,310 --> 00:53:53,390
+Right, in the sense that you're taking the MLPs,
+
+1290
+00:53:53,390 --> 00:53:55,367
+right, the FFN components of your network.
+
+1291
+00:53:55,367 --> 00:53:57,450
+And you're going to split them up in various ways,
+
+1292
+00:53:57,450 --> 00:54:00,657
+and you'll incur a communication penalty in the same way
+
+1293
+00:54:00,657 --> 00:54:02,490
+that you're maybe splitting up the matrices,
+
+1294
+00:54:02,490 --> 00:54:04,630
+except here you're splitting up the MLP
+
+1295
+00:54:04,630 --> 00:54:07,870
+across different devices.
+
+1296
+00:54:07,870 --> 00:54:11,230
+And the systems behavior of tensor parallel is--
+
+1297
+00:54:11,230 --> 00:54:14,670
+oh, sorry, expert parallel-- is roughly like tensor parallel
+
+1298
+00:54:14,670 --> 00:54:18,510
+as well in the sense that this is a high bandwidth parallelism
+
+1299
+00:54:18,510 --> 00:54:21,870
+primitive that also reduces activation.
+
+1300
+00:54:21,870 --> 00:54:26,310
+But one important thing is that if you're doing an MoE,
+
+1301
+00:54:26,310 --> 00:54:30,030
+you almost always prefer using an expert parallel sharding
+
+1302
+00:54:30,030 --> 00:54:31,970
+strategy over tensor parallel.
+
+1303
+00:54:31,970 --> 00:54:36,310
+And I've taken this screenshot from the parallelism guidelines
+
+1304
+00:54:36,310 --> 00:54:40,990
+from Megatron, which is NVIDIA's like parallelism library.
+
+1305
+00:54:40,990 --> 00:54:44,165
+It's a really wonderful library and document.
+
+1306
+00:54:44,165 --> 00:54:45,790
+And one of the guidelines, they say is,
+
+1307
+00:54:45,790 --> 00:54:48,250
+look, if you're going to do some of parallelism,
+
+1308
+00:54:48,250 --> 00:54:51,870
+either EP or TP, you should be using EP over RP.
+
+1309
+00:54:51,870 --> 00:54:53,093
+Why is that?
+
+1310
+00:54:53,093 --> 00:54:54,510
+Well, this is actually a good list
+
+1311
+00:54:54,510 --> 00:54:56,710
+of drawbacks for tensor parallel.
+
+1312
+00:54:56,710 --> 00:54:59,350
+If you have a matrix and then you cut up the matrix too
+
+1313
+00:54:59,350 --> 00:55:02,630
+finely, well, the matrices are going to start to get small
+
+1314
+00:55:02,630 --> 00:55:04,470
+and your GPU utilization will suffer.
+
+1315
+00:55:04,470 --> 00:55:07,130
+So you want your matmuls as big as possible,
+
+1316
+00:55:07,130 --> 00:55:10,070
+and tensor parallel reduces that.
+
+1317
+00:55:10,070 --> 00:55:12,630
+For MoE layers, it's a lot easier
+
+1318
+00:55:12,630 --> 00:55:15,990
+to route sparse token activations
+
+1319
+00:55:15,990 --> 00:55:20,270
+rather than to potentially route these dense big tensor parallel
+
+1320
+00:55:20,270 --> 00:55:22,710
+matmul activations.
+
+1321
+00:55:22,710 --> 00:55:29,310
+And then you can do things like route tokens exactly
+
+1322
+00:55:29,310 --> 00:55:30,610
+to the places that they need.
+
+1323
+00:55:30,610 --> 00:55:32,730
+And you can skip some computation-- or sorry,
+
+1324
+00:55:32,730 --> 00:55:35,710
+some overhead in the cases that if you're
+
+1325
+00:55:35,710 --> 00:55:37,950
+going to have MoE anyway, you might
+
+1326
+00:55:37,950 --> 00:55:40,590
+as well have the number of experts split up
+
+1327
+00:55:40,590 --> 00:55:43,870
+over all the devices.
+
+1328
+00:55:43,870 --> 00:55:47,550
+Now, this-- sorry, yeah.
+
+1329
+00:55:47,550 --> 00:55:49,810
+This might make it seem like, all right, EP is great.
+
+1330
+00:55:49,810 --> 00:55:52,750
+Everyone should be doing expert apparel all the time.
+
+1331
+00:55:52,750 --> 00:55:54,950
+Unfortunately, expert parallel is still
+
+1332
+00:55:54,950 --> 00:55:58,010
+really complicated and still very difficult.
+
+1333
+00:55:58,010 --> 00:56:00,710
+I think everything that I've said after FSDP--
+
+1334
+00:56:00,710 --> 00:56:03,670
+tensor parallel, pipeline parallel, systems wise
+
+1335
+00:56:03,670 --> 00:56:06,630
+is quite non-trivial to get working really well.
+
+1336
+00:56:06,630 --> 00:56:09,350
+And I'll just point to two different libraries
+
+1337
+00:56:09,350 --> 00:56:12,210
+not to tell you the details of what happens inside of them,
+
+1338
+00:56:12,210 --> 00:56:16,110
+but to tell you, this is seriously complicated business.
+
+1339
+00:56:16,110 --> 00:56:18,360
+DeepSeek has a library called DPP,
+
+1340
+00:56:18,360 --> 00:56:20,110
+which I think is one of my favorite things
+
+1341
+00:56:20,110 --> 00:56:23,470
+from the DeepSeek V3 era, which is basically
+
+1342
+00:56:23,470 --> 00:56:26,750
+their own library for doing expert parallel routing
+
+1343
+00:56:26,750 --> 00:56:31,030
+and dispatching, where they're looking at really low level GPU
+
+1344
+00:56:31,030 --> 00:56:35,070
+networking primitives in order to try to basically combine
+
+1345
+00:56:35,070 --> 00:56:37,910
+different operations or have the hardware handle
+
+1346
+00:56:37,910 --> 00:56:40,830
+certain operations in order to make MoE routing
+
+1347
+00:56:40,830 --> 00:56:43,470
+as efficient as possible.
+
+1348
+00:56:43,470 --> 00:56:47,910
+Similarly, NVIDIA has a library called Hybrid EP, which
+
+1349
+00:56:47,910 --> 00:56:51,990
+is a similar effort of having very efficient low level
+
+1350
+00:56:51,990 --> 00:56:57,110
+hardware implementations of expert parallel dispatching.
+
+1351
+00:56:57,110 --> 00:56:58,860
+And just to give you the high level thing,
+
+1352
+00:56:58,860 --> 00:57:01,950
+right, the reason why this stuff is hard
+
+1353
+00:57:01,950 --> 00:57:04,930
+is you are doing a lot of all to all dispatching.
+
+1354
+00:57:04,930 --> 00:57:07,790
+If you look at the communications pattern of MoE,
+
+1355
+00:57:07,790 --> 00:57:10,810
+much like tensor parallel, every time you have a MLP,
+
+1356
+00:57:10,810 --> 00:57:12,370
+you're going to have to route tokens
+
+1357
+00:57:12,370 --> 00:57:14,350
+all sorts of different places, and you
+
+1358
+00:57:14,350 --> 00:57:16,710
+need to do this in a very latency sensitive way.
+
+1359
+00:57:16,710 --> 00:57:19,030
+Because your computation is waiting for your tokens
+
+1360
+00:57:19,030 --> 00:57:20,070
+to arrive.
+
+1361
+00:57:20,070 --> 00:57:22,790
+So reducing the latency of this dispatch
+
+1362
+00:57:22,790 --> 00:57:25,350
+is extremely, extremely important.
+
+1363
+00:57:25,350 --> 00:57:29,270
+And one final thing that is like a fun trivia about the DPP
+
+1364
+00:57:29,270 --> 00:57:31,990
+library is the deep sea cloaks are
+
+1365
+00:57:31,990 --> 00:57:34,330
+so intense that in order to optimize,
+
+1366
+00:57:34,330 --> 00:57:36,330
+like every last bit of performance,
+
+1367
+00:57:36,330 --> 00:57:40,990
+they basically looked and found undocumented ptx, which
+
+1368
+00:57:40,990 --> 00:57:45,430
+is like GPU machine code or machine code like things.
+
+1369
+00:57:45,430 --> 00:57:48,190
+And they found how to use these undocumented instructions
+
+1370
+00:57:48,190 --> 00:57:50,890
+to further accelerate their networking communication.
+
+1371
+00:57:50,890 --> 00:57:52,550
+So really, this is the level of stuff
+
+1372
+00:57:52,550 --> 00:57:56,870
+that you need in order to get to the frontier of parallelism
+
+1373
+00:57:56,870 --> 00:57:59,430
+efficiency.
+
+1374
+00:57:59,430 --> 00:58:03,030
+Finally, up until now, I've talked about all the parallelism
+
+1375
+00:58:03,030 --> 00:58:05,110
+primitives in isolation, like data parallel
+
+1376
+00:58:05,110 --> 00:58:06,630
+and so on and so forth.
+
+1377
+00:58:06,630 --> 00:58:10,190
+With the implicit assumption that you can just put
+
+1378
+00:58:10,190 --> 00:58:11,990
+them together like LEGO blocks.
+
+1379
+00:58:11,990 --> 00:58:13,770
+And this is true, for the most part,
+
+1380
+00:58:13,770 --> 00:58:16,210
+for basically all the other parallelism strategies.
+
+1381
+00:58:16,210 --> 00:58:18,310
+It's very easy to combine, I don't know,
+
+1382
+00:58:18,310 --> 00:58:21,390
+data and tensor parallel.
+
+1383
+00:58:21,390 --> 00:58:25,790
+Expert parallel has additional constraints
+
+1384
+00:58:25,790 --> 00:58:28,110
+that you want to be somewhat respectful of.
+
+1385
+00:58:28,110 --> 00:58:31,590
+Usually, the naive way to do data and expert
+
+1386
+00:58:31,590 --> 00:58:35,270
+parallelism, which I think is in many of the old libraries,
+
+1387
+00:58:35,270 --> 00:58:39,560
+is that the replicas for DP and EP are the same.
+
+1388
+00:58:39,560 --> 00:58:41,180
+So in other words, let's say I have
+
+1389
+00:58:41,180 --> 00:58:43,060
+a data parallelism of eight.
+
+1390
+00:58:43,060 --> 00:58:47,800
+I'm going to shard my experts across those eight replicas.
+
+1391
+00:58:47,800 --> 00:58:50,540
+And then my data will be split across those eight replicas
+
+1392
+00:58:50,540 --> 00:58:52,380
+and routed in various ways.
+
+1393
+00:58:52,380 --> 00:58:55,780
+Right, so in other words, you split your GPUs according to DP,
+
+1394
+00:58:55,780 --> 00:58:58,395
+and then your EP is a subset of that split.
+
+1395
+00:58:58,395 --> 00:59:00,020
+Right, and this is a very natural thing
+
+1396
+00:59:00,020 --> 00:59:02,500
+to do because you're routing tokens.
+
+1397
+00:59:02,500 --> 00:59:05,180
+But if you do this, there's a maximum
+
+1398
+00:59:05,180 --> 00:59:07,940
+bound to how far you can parallelize with EP.
+
+1399
+00:59:07,940 --> 00:59:13,540
+And it constrains how DP and EP
+
+1400
+00:59:13,540 --> 00:59:15,880
+And so I think this is the final complexity.
+
+1401
+00:59:15,880 --> 00:59:18,820
+I apologize that expert parallel is a little bit
+
+1402
+00:59:18,820 --> 00:59:21,500
+really messy in many ways.
+
+1403
+00:59:21,500 --> 00:59:23,940
+But because of these complexities,
+
+1404
+00:59:23,940 --> 00:59:27,380
+there is actually this one interesting systems thing
+
+1405
+00:59:27,380 --> 00:59:30,900
+that I'll tell you about before I stop talking about EP,
+
+1406
+00:59:30,900 --> 00:59:32,240
+which is this following fact.
+
+1407
+00:59:32,240 --> 00:59:34,860
+Remember, MoEs only change the MLPs, right.
+
+1408
+00:59:34,860 --> 00:59:36,500
+They don't change the attention at all.
+
+1409
+00:59:36,500 --> 00:59:38,740
+Right, so because we're cutting up
+
+1410
+00:59:38,740 --> 00:59:40,940
+the MLPs, but not the attention, this
+
+1411
+00:59:40,940 --> 00:59:43,820
+means that expert parallelism kind of applies unevenly
+
+1412
+00:59:43,820 --> 00:59:44,480
+to the model.
+
+1413
+00:59:44,480 --> 00:59:47,160
+So when I parallelize at the expert level,
+
+1414
+00:59:47,160 --> 00:59:50,180
+I'm parallelizing the MLPs, but I'm not parallelizing
+
+1415
+00:59:50,180 --> 00:59:51,140
+the attention, right.
+
+1416
+00:59:51,140 --> 00:59:54,580
+And so in order to parallelize the attention,
+
+1417
+00:59:54,580 --> 00:59:57,040
+maybe I want to also use tensor parallel, right.
+
+1418
+00:59:57,040 --> 00:59:59,580
+So I want a high tensor parallel level in order
+
+1419
+00:59:59,580 --> 01:00:01,820
+to cut out my attention.
+
+1420
+01:00:01,820 --> 01:00:08,160
+But this is going to then affect my MLPs.
+
+1421
+01:00:08,160 --> 01:00:10,740
+Because if I have high tensor parallel and high expert
+
+1422
+01:00:10,740 --> 01:00:12,860
+parallel, I've cut out my matrices
+
+1423
+01:00:12,860 --> 01:00:16,480
+into really tiny pieces, and my utilization is very bad.
+
+1424
+01:00:16,480 --> 01:00:19,420
+So there's this weird tradeoff where you want high tensor
+
+1425
+01:00:19,420 --> 01:00:23,260
+parallel for the attention, but you want low tensor parallel
+
+1426
+01:00:23,260 --> 01:00:24,420
+for the MLPs.
+
+1427
+01:00:24,420 --> 01:00:27,580
+So there's this conflict.
+
+1428
+01:00:27,580 --> 01:00:28,920
+So what do you do?
+
+1429
+01:00:28,920 --> 01:00:31,780
+Well, in the last few years, people
+
+1430
+01:00:31,780 --> 01:00:34,380
+have come up with more complicated system solutions
+
+1431
+01:00:34,380 --> 01:00:37,540
+that decouple the tensor parallel
+
+1432
+01:00:37,540 --> 01:00:39,440
+in the MLPs and the attention.
+
+1433
+01:00:39,440 --> 01:00:42,040
+And so the attention layers get one kind of tensor parallel,
+
+1434
+01:00:42,040 --> 01:00:45,180
+and the MoE layers get another kind of tensor parallel.
+
+1435
+01:00:45,180 --> 01:00:48,220
+And so now you can fully decouple the parallelism.
+
+1436
+01:00:48,220 --> 01:00:51,460
+And this leads to more complicated but more effective
+
+1437
+01:00:51,460 --> 01:00:55,060
+combinations of EP and tensor parallel,
+
+1438
+01:00:55,060 --> 01:00:58,300
+as well as data parallel.
+
+1439
+01:00:58,300 --> 01:00:59,540
+Cool.
+
+1440
+01:00:59,540 --> 01:01:00,460
+OK.
+
+1441
+01:01:00,460 --> 01:01:05,140
+So the last thing in this space that I want to end with
+
+1442
+01:01:05,140 --> 01:01:08,000
+is context parallel.
+
+1443
+01:01:08,000 --> 01:01:11,300
+So context parallel or ring attention
+
+1444
+01:01:11,300 --> 01:01:13,660
+is an idea of basically splitting activations
+
+1445
+01:01:13,660 --> 01:01:17,700
+in a very long sequence across different accelerators.
+
+1446
+01:01:17,700 --> 01:01:21,220
+And you can do things like pass the activations
+
+1447
+01:01:21,220 --> 01:01:25,980
+to the device that's needed in this ring-like way following
+
+1448
+01:01:25,980 --> 01:01:29,780
+the mesh topology of TPUs.
+
+1449
+01:01:29,780 --> 01:01:31,340
+And so ring attention, which I think
+
+1450
+01:01:31,340 --> 01:01:33,580
+was the original paper that did this,
+
+1451
+01:01:33,580 --> 01:01:35,860
+showed that this worked really well on TPUs.
+
+1452
+01:01:35,860 --> 01:01:38,380
+Context parallel is a standard parallelization strategy
+
+1453
+01:01:38,380 --> 01:01:39,400
+that does this.
+
+1454
+01:01:39,400 --> 01:01:42,700
+Both of these are used in long context extension stages
+
+1455
+01:01:42,700 --> 01:01:44,740
+and in model serving.
+
+1456
+01:01:44,740 --> 01:01:47,620
+I'm not going to talk about it, mainly because I think
+
+1457
+01:01:47,620 --> 01:01:49,340
+it overlaps in concept to a lot of what
+
+1458
+01:01:49,340 --> 01:01:51,180
+we've talked about already.
+
+1459
+01:01:51,180 --> 01:01:52,680
+OK.
+
+1460
+01:01:52,680 --> 01:01:55,040
+So this is the end of the second part.
+
+1461
+01:01:55,040 --> 01:01:57,840
+And I think to put everything together,
+
+1462
+01:01:57,840 --> 01:02:01,263
+I've made a big table of parallelization strategies,
+
+1463
+01:02:01,263 --> 01:02:03,180
+including data parallel, which are the top two
+
+1464
+01:02:03,180 --> 01:02:05,900
+rows and the various model parallelism strategies
+
+1465
+01:02:05,900 --> 01:02:07,300
+below them.
+
+1466
+01:02:07,300 --> 01:02:10,540
+And I think I've colored in red what I subjectively
+
+1467
+01:02:10,540 --> 01:02:14,420
+feel like are the drawbacks of the different methods.
+
+1468
+01:02:14,420 --> 01:02:16,740
+And the reason why I've colored things in red
+
+1469
+01:02:16,740 --> 01:02:18,660
+is to try to convey to you that there
+
+1470
+01:02:18,660 --> 01:02:22,360
+is no one strictly dominant parallelization strategy.
+
+1471
+01:02:22,360 --> 01:02:24,300
+It's all a whole bunch of tradeoffs
+
+1472
+01:02:24,300 --> 01:02:27,140
+that you somehow have to manage gracefully
+
+1473
+01:02:27,140 --> 01:02:29,860
+in order to get a good outcome.
+
+1474
+01:02:29,860 --> 01:02:32,160
+So for example, FSDP is great.
+
+1475
+01:02:32,160 --> 01:02:34,100
+It's a wonderful strategy.
+
+1476
+01:02:34,100 --> 01:02:36,040
+Does not help you with activation.
+
+1477
+01:02:36,040 --> 01:02:38,380
+It consumes your global batch size
+
+1478
+01:02:38,380 --> 01:02:40,460
+in order to do parallelization.
+
+1479
+01:02:40,460 --> 01:02:41,780
+So it has limits.
+
+1480
+01:02:41,780 --> 01:02:43,380
+And to address these, maybe you want
+
+1481
+01:02:43,380 --> 01:02:45,660
+to compose them with some of these other tricks
+
+1482
+01:02:45,660 --> 01:02:46,892
+that you have at hand.
+
+1483
+01:02:46,892 --> 01:02:49,100
+Maybe you want to do some tensor parallel to cut down
+
+1484
+01:02:49,100 --> 01:02:51,260
+on activation memory.
+
+1485
+01:02:51,260 --> 01:02:53,680
+It also doesn't touch global batch size.
+
+1486
+01:02:53,680 --> 01:02:56,780
+But if you do this, now you need fast networking
+
+1487
+01:02:56,780 --> 01:03:00,020
+and you need high bandwidth.
+
+1488
+01:03:00,020 --> 01:03:04,460
+And also then to leverage your slower connections, maybe
+
+1489
+01:03:04,460 --> 01:03:06,620
+you want to use some of the other parallelization
+
+1490
+01:03:06,620 --> 01:03:07,420
+strategies.
+
+1491
+01:03:07,420 --> 01:03:10,940
+Right, so you see how all of these different advantages
+
+1492
+01:03:10,940 --> 01:03:13,940
+means that there's a place for one of these parallelization
+
+1493
+01:03:13,940 --> 01:03:17,160
+strategies in not every architecture,
+
+1494
+01:03:17,160 --> 01:03:18,858
+but in many large scale architectures,
+
+1495
+01:03:18,858 --> 01:03:20,400
+you use a large combination of these.
+
+1496
+01:03:21,740 --> 01:03:23,540
+[INAUDIBLE]
+
+1497
+01:03:20,400 --> 01:03:21,740
+Yes?
+
+1498
+01:03:23,540 --> 01:03:27,480
+Are they still applicable to MoEs, or is that strictly--
+
+1499
+01:03:27,480 --> 01:03:27,980
+Yeah.
+
+1500
+01:03:27,980 --> 01:03:32,420
+So the question was, is pipeline and, what,
+
+1501
+01:03:32,420 --> 01:03:33,960
+FSDP applicable to MoEs?
+
+1502
+01:03:33,960 --> 01:03:36,860
+Yes, yes, they're absolutely applicable.
+
+1503
+01:03:36,860 --> 01:03:39,580
+If anything, the standard recommendation
+
+1504
+01:03:39,580 --> 01:03:42,480
+is expert parallel is like tensor parallel.
+
+1505
+01:03:42,480 --> 01:03:46,500
+So you want to go up to 8 or fast connections.
+
+1506
+01:03:46,500 --> 01:03:48,620
+People don't really follow that anymore.
+
+1507
+01:03:48,620 --> 01:03:52,820
+But even then, FSDP or data parallel in general and pipeline
+
+1508
+01:03:52,820 --> 01:03:55,980
+and tensor are used extensively in all the frontier models.
+
+1509
+01:03:55,980 --> 01:03:58,020
+Yeah.
+
+1510
+01:03:58,020 --> 01:03:58,700
+Good.
+
+1511
+01:03:58,700 --> 01:04:02,820
+OK, and you will do this or something like this
+
+1512
+01:04:02,820 --> 01:04:04,280
+as part of your assignment.
+
+1513
+01:04:04,280 --> 01:04:06,727
+But one of the things that's cool about parallelism
+
+1514
+01:04:06,727 --> 01:04:09,060
+and I think is nice is that you can do some math, right.
+
+1515
+01:04:09,060 --> 01:04:11,380
+You can actually say, OK, how much
+
+1516
+01:04:11,380 --> 01:04:15,140
+compute do I do per layer for my different sharding strategies?
+
+1517
+01:04:15,140 --> 01:04:17,620
+How much communication do I do per layer
+
+1518
+01:04:17,620 --> 01:04:19,820
+for my different communication strategies?
+
+1519
+01:04:19,820 --> 01:04:22,940
+And if I have different devices allocated
+
+1520
+01:04:22,940 --> 01:04:25,020
+to different communication strategies,
+
+1521
+01:04:25,020 --> 01:04:26,620
+how do these things scale?
+
+1522
+01:04:26,620 --> 01:04:30,420
+And then I can figure out for a combination of these strategies,
+
+1523
+01:04:30,420 --> 01:04:31,540
+how do they scale?
+
+1524
+01:04:31,540 --> 01:04:34,560
+And you can start to make plots of,
+
+1525
+01:04:34,560 --> 01:04:37,343
+if I have a certain batch size and I
+
+1526
+01:04:37,343 --> 01:04:39,260
+have a certain parallelization strategy-- so I
+
+1527
+01:04:39,260 --> 01:04:41,520
+have three different parallelization strategies here.
+
+1528
+01:04:41,520 --> 01:04:45,080
+How much am I utilizing my GPU?
+
+1529
+01:04:45,080 --> 01:04:49,060
+The ratio of compute time to communications time.
+
+1530
+01:04:49,060 --> 01:04:52,020
+And as long as my compute time is longer than communications
+
+1531
+01:04:52,020 --> 01:04:55,420
+time, in principle, you can just hide communications
+
+1532
+01:04:55,420 --> 01:04:57,080
+underneath your computation.
+
+1533
+01:04:57,080 --> 01:05:00,460
+And so you can make plots like this where this dashed line
+
+1534
+01:05:00,460 --> 01:05:03,812
+at the very top, that's the boundary of where
+
+1535
+01:05:03,812 --> 01:05:04,520
+you're efficient.
+
+1536
+01:05:04,520 --> 01:05:08,400
+Anything above that is fully utilizing your computation.
+
+1537
+01:05:08,400 --> 01:05:11,200
+Anything below that is on the bad part of your roofline.
+
+1538
+01:05:11,200 --> 01:05:14,580
+You're waiting for communication to do your computation.
+
+1539
+01:05:14,580 --> 01:05:16,660
+One thing that's pretty interesting here, right.
+
+1540
+01:05:16,660 --> 01:05:19,420
+So I think this should feel intuitive to you
+
+1541
+01:05:19,420 --> 01:05:20,840
+based on what I've told you.
+
+1542
+01:05:20,840 --> 01:05:24,620
+If your batch size is big enough, FSDP only is good.
+
+1543
+01:05:24,620 --> 01:05:30,890
+Right, if you have a batch size of 2,000, right, per chip,
+
+1544
+01:05:30,890 --> 01:05:32,750
+then you how far can you go?
+
+1545
+01:05:32,750 --> 01:05:35,390
+Well, you've got FSDP doing extremely well.
+
+1546
+01:05:35,390 --> 01:05:37,050
+You're fully compute bound, right.
+
+1547
+01:05:37,050 --> 01:05:40,470
+But the important thing is, as the batch size goes down,
+
+1548
+01:05:40,470 --> 01:05:43,745
+FSDP only will hit a point where you're now communication bound.
+
+1549
+01:05:43,745 --> 01:05:44,870
+Now, what do you do, right?
+
+1550
+01:05:44,870 --> 01:05:47,450
+Well, what do you do is now, in order
+
+1551
+01:05:47,450 --> 01:05:49,090
+to keep pushing efficiencies, you
+
+1552
+01:05:49,090 --> 01:05:51,130
+have to incorporate MP, in this case,
+
+1553
+01:05:51,130 --> 01:05:52,990
+is tensor parallel, to the mix.
+
+1554
+01:05:52,990 --> 01:05:55,650
+Right, now you can push that curve out a little bit more
+
+1555
+01:05:55,650 --> 01:05:58,810
+and be compute bound even into smaller batch size regimes,
+
+1556
+01:05:58,810 --> 01:05:59,310
+right.
+
+1557
+01:05:59,310 --> 01:06:02,930
+And you keep adding strategies to push this curve out in order
+
+1558
+01:06:02,930 --> 01:06:05,010
+to get something better.
+
+1559
+01:06:05,010 --> 01:06:07,790
+And this is what people call 3D or 4D--
+
+1560
+01:06:07,790 --> 01:06:09,170
+I don't think there's 5D--
+
+1561
+01:06:09,170 --> 01:06:10,230
+parallelism.
+
+1562
+01:06:10,230 --> 01:06:12,650
+Which is when you put all these strategies together
+
+1563
+01:06:12,650 --> 01:06:16,730
+to keep your compute units fully utilized
+
+1564
+01:06:16,730 --> 01:06:19,650
+under different communication topologies.
+
+1565
+01:06:19,650 --> 01:06:21,978
+There's a very simple prescription.
+
+1566
+01:06:21,978 --> 01:06:23,770
+I think up until now, I've been telling you
+
+1567
+01:06:23,770 --> 01:06:25,310
+things in generalities.
+
+1568
+01:06:25,310 --> 01:06:27,150
+So it might feel complicated.
+
+1569
+01:06:27,150 --> 01:06:29,810
+But I think actually the strategy for how you parallelize
+
+1570
+01:06:29,810 --> 01:06:31,190
+is very simple, actually.
+
+1571
+01:06:31,190 --> 01:06:33,135
+Which is, until your model fits into memory,
+
+1572
+01:06:33,135 --> 01:06:35,010
+you're going to cut up your model by whatever
+
+1573
+01:06:35,010 --> 01:06:36,438
+means necessary, right.
+
+1574
+01:06:36,438 --> 01:06:38,230
+And how are you going to cut up your model.
+
+1575
+01:06:38,230 --> 01:06:40,690
+You're going to use either tensor or expert parallel
+
+1576
+01:06:40,690 --> 01:06:41,990
+for your fast interconnect.
+
+1577
+01:06:41,990 --> 01:06:43,740
+And so if you have eight GPUs per machine,
+
+1578
+01:06:43,740 --> 01:06:46,650
+you're going to use a tensor expert parallel of eight.
+
+1579
+01:06:46,650 --> 01:06:49,730
+And then you're going to pipeline parallel or Zero-3,
+
+1580
+01:06:49,730 --> 01:06:53,070
+which is FSDP, the rest of the way to make your model fit.
+
+1581
+01:06:53,070 --> 01:06:54,650
+And once your model fits, then you're
+
+1582
+01:06:54,650 --> 01:06:56,850
+going to just data parallel the rest of the way.
+
+1583
+01:06:56,850 --> 01:06:59,650
+Right, then use up the rest of your GPUs with data parallel,
+
+1584
+01:06:59,650 --> 01:07:00,598
+right.
+
+1585
+01:07:00,598 --> 01:07:02,390
+If your batch size ends up being too small,
+
+1586
+01:07:02,390 --> 01:07:07,130
+you can do gradient accumulation to get better GPU utilization.
+
+1587
+01:07:07,130 --> 01:07:08,770
+Very simple strategy.
+
+1588
+01:07:08,770 --> 01:07:12,610
+And this is borne out in the actual large scale
+
+1589
+01:07:12,610 --> 01:07:14,710
+parallel training libraries that you might use.
+
+1590
+01:07:14,710 --> 01:07:18,610
+So I've added the link here to Megatron's guide
+
+1591
+01:07:18,610 --> 01:07:21,130
+to parallelizing MoEs.
+
+1592
+01:07:21,130 --> 01:07:23,750
+But this idea actually applies to the dense models as well.
+
+1593
+01:07:23,750 --> 01:07:25,250
+And you see exactly the thing that I
+
+1594
+01:07:25,250 --> 01:07:26,830
+said, but in reverse order.
+
+1595
+01:07:26,830 --> 01:07:30,150
+So guideline number one is minimize model parallelism,
+
+1596
+01:07:30,150 --> 01:07:31,410
+maximize data parallelism.
+
+1597
+01:07:31,410 --> 01:07:34,730
+Right, so use most of your GPUs to shard data if you can.
+
+1598
+01:07:34,730 --> 01:07:38,510
+Now, if you're using GPUs, stay within NVLink.
+
+1599
+01:07:38,510 --> 01:07:41,630
+So that's one machine, or so one box, right.
+
+1600
+01:07:41,630 --> 01:07:44,190
+Keep expert parallel and tensor parallel within one box.
+
+1601
+01:07:44,190 --> 01:07:46,450
+And then if you're going to go multi-node,
+
+1602
+01:07:46,450 --> 01:07:48,850
+use pipeline parallelism to go multi-node.
+
+1603
+01:07:48,850 --> 01:07:52,568
+And then if you're MoE, then prefer expert parallel.
+
+1604
+01:07:52,568 --> 01:07:54,610
+And then finally, if you're doing long sequences,
+
+1605
+01:07:54,610 --> 01:07:55,770
+use context parallel.
+
+1606
+01:07:55,770 --> 01:07:57,690
+Right, ring attention.
+
+1607
+01:07:57,690 --> 01:08:00,210
+So exactly what I've been trying to get across
+
+1608
+01:08:00,210 --> 01:08:03,850
+to you through the lecture, but in practitioner
+
+1609
+01:08:03,850 --> 01:08:05,490
+form that you see here.
+
+1610
+01:08:05,490 --> 01:08:08,750
+OK, the final component-- actually,
+
+1611
+01:08:08,750 --> 01:08:12,810
+maybe I can pause here, in case anyone's curious about 4D
+
+1612
+01:08:12,810 --> 01:08:14,170
+parallelization stuff.
+
+1613
+01:08:14,170 --> 01:08:16,379
+Yeah.
+
+1614
+01:08:16,379 --> 01:08:18,010
+I know you said context parallel would
+
+1615
+01:08:18,010 --> 01:08:22,330
+be a better name for decreasing parallel [INAUDIBLE]
+
+1616
+01:08:25,670 --> 01:08:27,410
+Oh, yeah, yeah.
+
+1617
+01:08:27,410 --> 01:08:30,050
+Well, I mean, sequence parallel is often
+
+1618
+01:08:30,050 --> 01:08:33,010
+just you do it with tensor parallel
+
+1619
+01:08:33,010 --> 01:08:34,350
+in order to reduce activations.
+
+1620
+01:08:34,350 --> 01:08:36,729
+It's more of an add on that you put in
+
+1621
+01:08:36,729 --> 01:08:38,109
+in order to reduce activation.
+
+1622
+01:08:38,109 --> 01:08:42,170
+It's not its own standalone thing, in many cases.
+
+1623
+01:08:42,170 --> 01:08:43,729
+Yeah?
+
+1624
+01:08:43,729 --> 01:08:47,090
+With the suspicions that this is like a loop transformer,
+
+1625
+01:08:47,090 --> 01:08:51,930
+like that, does that make things easier or harder?
+
+1626
+01:08:51,930 --> 01:08:53,130
+OK.
+
+1627
+01:08:53,130 --> 01:08:57,430
+I don't how much I buy the loop transformer mythos rumors.
+
+1628
+01:08:57,430 --> 01:08:57,990
+Maybe it is.
+
+1629
+01:08:57,990 --> 01:08:59,210
+It would be interesting.
+
+1630
+01:08:59,210 --> 01:09:04,675
+But to the question of how the systems structures would change,
+
+1631
+01:09:04,675 --> 01:09:05,550
+it's a good question.
+
+1632
+01:09:05,550 --> 01:09:09,330
+I mean, I guess it might mess with things like FSDP.
+
+1633
+01:09:09,330 --> 01:09:11,069
+You can't really discard the weights.
+
+1634
+01:09:11,069 --> 01:09:12,527
+It does have the advantage, though,
+
+1635
+01:09:12,527 --> 01:09:14,529
+that you don't have to keep getting weights.
+
+1636
+01:09:14,529 --> 01:09:16,029
+It is much more parameter efficient,
+
+1637
+01:09:16,029 --> 01:09:18,210
+and so maybe much of the model parallelism stuff
+
+1638
+01:09:18,210 --> 01:09:20,270
+wouldn't be as important.
+
+1639
+01:09:20,270 --> 01:09:21,270
+It would be interesting.
+
+1640
+01:09:21,270 --> 01:09:25,050
+It would be definitely different for a lot of the FSDP style
+
+1641
+01:09:25,050 --> 01:09:25,550
+things.
+
+1642
+01:09:25,550 --> 01:09:29,450
+Because the FSDP strategy is really predicated on getweights,
+
+1643
+01:09:29,450 --> 01:09:31,350
+discard weights, getweights, discard weights.
+
+1644
+01:09:31,350 --> 01:09:34,770
+And in a loop, you're not discarding anything.
+
+1645
+01:09:34,770 --> 01:09:36,529
+Good, OK.
+
+1646
+01:09:36,529 --> 01:09:37,290
+All right.
+
+1647
+01:09:37,290 --> 01:09:41,290
+So this is an old paper, but it is actually probably one
+
+1648
+01:09:41,290 --> 01:09:43,450
+of the best resources.
+
+1649
+01:09:43,450 --> 01:09:46,490
+And also, it's not like the networking fundamentals
+
+1650
+01:09:46,490 --> 01:09:47,270
+changed that much.
+
+1651
+01:09:47,270 --> 01:09:53,050
+So I think the lessons from here are very relevant today.
+
+1652
+01:09:53,050 --> 01:09:56,610
+And so this is a paper by NVIDIA and formerly
+
+1653
+01:09:56,610 --> 01:09:59,690
+unfortunately, Stanford folks, Matei and Deepak,
+
+1654
+01:09:59,690 --> 01:10:02,610
+who did a bunch of runs of large scale parallel
+
+1655
+01:10:02,610 --> 01:10:05,170
+training across many different configurations
+
+1656
+01:10:05,170 --> 01:10:07,990
+to basically tell you, as you're scaling up,
+
+1657
+01:10:07,990 --> 01:10:10,130
+how should your parallelization strategies
+
+1658
+01:10:10,130 --> 01:10:13,970
+change across different scales?
+
+1659
+01:10:13,970 --> 01:10:15,610
+And you see exactly this prescription
+
+1660
+01:10:15,610 --> 01:10:18,090
+that I've been talking about before, which is, you
+
+1661
+01:10:18,090 --> 01:10:20,890
+have data parallel maxed out.
+
+1662
+01:10:20,890 --> 01:10:23,853
+And then your tensor parallel increases until it hits 8,
+
+1663
+01:10:23,853 --> 01:10:26,270
+and then you stop because you don't want to go any higher.
+
+1664
+01:10:26,270 --> 01:10:28,850
+And then from that point on, your pipeline parallel increases
+
+1665
+01:10:28,850 --> 01:10:31,170
+and increases and increases, right.
+
+1666
+01:10:31,170 --> 01:10:35,160
+And with sufficiently large scale, data parallel decreases.
+
+1667
+01:10:35,160 --> 01:10:36,910
+And at the very end, you have a DP of six.
+
+1668
+01:10:36,910 --> 01:10:39,650
+And this is because you just need this much tensor
+
+1669
+01:10:39,650 --> 01:10:41,670
+and pipeline parallel to fit the stuff.
+
+1670
+01:10:41,670 --> 01:10:47,130
+Right, and you're using the rest of your budget on data parallel.
+
+1671
+01:10:47,130 --> 01:10:48,850
+And if you put them all together,
+
+1672
+01:10:48,850 --> 01:10:53,050
+right, even as you go to ludicrously large numbers
+
+1673
+01:10:53,050 --> 01:10:57,710
+of GPUs, your utilization stays very flat and very good.
+
+1674
+01:10:57,710 --> 01:11:01,390
+And this is why I think you see this gigantic data center
+
+1675
+01:11:01,390 --> 01:11:01,930
+build-outs.
+
+1676
+01:11:01,930 --> 01:11:04,430
+The parallelization strategies people have come up with
+
+1677
+01:11:04,430 --> 01:11:05,473
+are so effective.
+
+1678
+01:11:05,473 --> 01:11:06,890
+And the hardware for communication
+
+1679
+01:11:06,890 --> 01:11:10,010
+is so good that even with the gigantic data centers or even
+
+1680
+01:11:10,010 --> 01:11:14,330
+cross data center training, you can get really good utilization
+
+1681
+01:11:14,330 --> 01:11:17,270
+across these different regimes.
+
+1682
+01:11:20,210 --> 01:11:22,640
+They have really nice quantitative evidence
+
+1683
+01:11:22,640 --> 01:11:27,000
+showing you, for different batch sizes for tensor parallel, what
+
+1684
+01:11:27,000 --> 01:11:28,260
+is the right place to stop?
+
+1685
+01:11:28,260 --> 01:11:31,860
+And it's clearly tensor parallel size of 8.
+
+1686
+01:11:31,860 --> 01:11:35,000
+As you go beyond that, you're going to get into trouble.
+
+1687
+01:11:35,000 --> 01:11:37,480
+And pipeline parallel, you also need big batch sizes
+
+1688
+01:11:37,480 --> 01:11:41,140
+in order to be able to utilize the machines effectively.
+
+1689
+01:11:41,140 --> 01:11:43,460
+That's why there's a blue to orange gap.
+
+1690
+01:11:43,460 --> 01:11:44,700
+There's pipeline parallel.
+
+1691
+01:11:44,700 --> 01:11:47,360
+And the larger the pipeline parallel, the larger the gap
+
+1692
+01:11:47,360 --> 01:11:51,560
+between orange and blue.
+
+1693
+01:11:51,560 --> 01:11:54,200
+And then I think another thing that maybe you have already
+
+1694
+01:11:54,200 --> 01:11:58,080
+internalized from flash attention but maybe not is maybe
+
+1695
+01:11:58,080 --> 01:12:00,740
+you should do a bunch of activation recomputation.
+
+1696
+01:12:00,740 --> 01:12:04,020
+Because if you do activation recomputation very cleverly,
+
+1697
+01:12:04,020 --> 01:12:05,620
+then you can get a bigger batch size,
+
+1698
+01:12:05,620 --> 01:12:07,560
+and the bigger batch size then allows
+
+1699
+01:12:07,560 --> 01:12:09,320
+you to get better utilization.
+
+1700
+01:12:09,320 --> 01:12:12,320
+This is a, initially, I think, very counterintuitive
+
+1701
+01:12:12,320 --> 01:12:14,400
+observation that actually you should
+
+1702
+01:12:14,400 --> 01:12:17,120
+do more computation via recomputation
+
+1703
+01:12:17,120 --> 01:12:21,200
+in order to end up getting better utilization,
+
+1704
+01:12:21,200 --> 01:12:22,900
+because it allows you to save memory,
+
+1705
+01:12:22,900 --> 01:12:26,200
+and memory can be turned into batch size.
+
+1706
+01:12:26,200 --> 01:12:27,160
+OK.
+
+1707
+01:12:27,160 --> 01:12:30,800
+So that was a more quantitative view
+
+1708
+01:12:30,800 --> 01:12:33,745
+of how to pick parallelism strategies.
+
+1709
+01:12:33,745 --> 01:12:35,120
+The last thing I want to end with
+
+1710
+01:12:35,120 --> 01:12:39,800
+is just to look at just a very few training runs.
+
+1711
+01:12:39,800 --> 01:12:41,520
+And looking at the training runs, maybe
+
+1712
+01:12:41,520 --> 01:12:44,520
+we can get a sense of how modern parallelization is
+
+1713
+01:12:44,520 --> 01:12:46,720
+used in practice and how it's evolving.
+
+1714
+01:12:46,720 --> 01:12:51,760
+So Dolma by AI2 was a seven be open source model.
+
+1715
+01:12:51,760 --> 01:12:54,700
+Sorry, Olmo, which was trained on the Dolma data set.
+
+1716
+01:12:54,700 --> 01:12:57,760
+And this isn't the Dolma paper for the details.
+
+1717
+01:12:57,760 --> 01:13:02,800
+Was a 7B model trained fully with FSDP across a whole bunch
+
+1718
+01:13:02,800 --> 01:13:03,660
+of accelerators.
+
+1719
+01:13:03,660 --> 01:13:05,000
+I forget exactly how many.
+
+1720
+01:13:05,000 --> 01:13:09,720
+But this is one example of FSDP scales
+
+1721
+01:13:09,720 --> 01:13:12,400
+surprisingly well, even to many, many GPUs.
+
+1722
+01:13:12,400 --> 01:13:14,680
+As long as you're training a small model,
+
+1723
+01:13:14,680 --> 01:13:18,180
+FSDP is actually a pretty good strategy for parallelization.
+
+1724
+01:13:18,180 --> 01:13:23,680
+I think many 7D-ish models are trained purely with FSDP.
+
+1725
+01:13:23,680 --> 01:13:27,100
+DeepSeek, because of their systems skills,
+
+1726
+01:13:27,100 --> 01:13:31,560
+does do some pretty exotic and useful stuff.
+
+1727
+01:13:31,560 --> 01:13:35,320
+So DeepSeek V1 was trained just with data
+
+1728
+01:13:35,320 --> 01:13:39,120
+parallel ZeRO stage 1 with tensor sequence and pipeline
+
+1729
+01:13:39,120 --> 01:13:41,480
+parallel, as I talked to you before.
+
+1730
+01:13:41,480 --> 01:13:45,860
+DeepSeek V3, that's a MoE model, if you remember my MoE lecture.
+
+1731
+01:13:45,860 --> 01:13:48,700
+So they have not only pipeline parallel,
+
+1732
+01:13:48,700 --> 01:13:50,577
+but they also have expert parallel instead
+
+1733
+01:13:50,577 --> 01:13:51,660
+of tensor parallel, right.
+
+1734
+01:13:51,660 --> 01:13:54,760
+And their expert parallel actually is a little bit exotic.
+
+1735
+01:13:54,760 --> 01:13:56,780
+Because they have 64 way parallelism.
+
+1736
+01:13:56,780 --> 01:13:59,360
+So they group eight different machines together, and that's
+
+1737
+01:13:59,360 --> 01:14:02,160
+their expert parallel domain.
+
+1738
+01:14:02,160 --> 01:14:05,020
+And to enable this large expert parallel,
+
+1739
+01:14:05,020 --> 01:14:06,600
+they basically use the same tricks
+
+1740
+01:14:06,600 --> 01:14:10,000
+that they have from their pipeline parallel
+
+1741
+01:14:10,000 --> 01:14:12,240
+pipelining in order to try to make sure
+
+1742
+01:14:12,240 --> 01:14:16,580
+that expert parallel doesn't have low utilization periods.
+
+1743
+01:14:16,580 --> 01:14:18,880
+So this is actually quite a complicated trick
+
+1744
+01:14:18,880 --> 01:14:23,880
+that they do to get these very large expert parallel splits.
+
+1745
+01:14:23,880 --> 01:14:28,040
+Another example, Yi, from Chinese open weights training
+
+1746
+01:14:28,040 --> 01:14:28,800
+setting.
+
+1747
+01:14:28,800 --> 01:14:31,800
+They use, once again, ZeRO stage 1 and tensor and pipeline
+
+1748
+01:14:31,800 --> 01:14:32,480
+parallel.
+
+1749
+01:14:32,480 --> 01:14:34,260
+Right, this very much makes sense.
+
+1750
+01:14:34,260 --> 01:14:36,400
+It's the classic data parallel, tensor parallel,
+
+1751
+01:14:36,400 --> 01:14:38,520
+pipeline parallel combo.
+
+1752
+01:14:38,520 --> 01:14:40,940
+And once again, once you go to MoEs,
+
+1753
+01:14:40,940 --> 01:14:42,520
+you replace the tensor parallelism
+
+1754
+01:14:42,520 --> 01:14:43,700
+with expert parallelism.
+
+1755
+01:14:43,700 --> 01:14:46,040
+Right, they serve similar goals.
+
+1756
+01:14:46,040 --> 01:14:50,520
+But expert parallelism is just a little bit more efficient.
+
+1757
+01:14:50,520 --> 01:14:53,500
+On the other extreme of a really big dense model,
+
+1758
+01:14:53,500 --> 01:14:54,960
+you have Llama3.
+
+1759
+01:14:54,960 --> 01:14:57,080
+The Llama3 report, I liked quite a bit,
+
+1760
+01:14:57,080 --> 01:14:59,560
+because they're one of the few reports that
+
+1761
+01:14:59,560 --> 01:15:03,100
+have literally a full breakdown of their parallelism strategy.
+
+1762
+01:15:03,100 --> 01:15:05,800
+Not just like in the abstract, but across all
+
+1763
+01:15:05,800 --> 01:15:06,780
+the different phases.
+
+1764
+01:15:06,780 --> 01:15:09,280
+So the cool thing that you see is
+
+1765
+01:15:09,280 --> 01:15:12,100
+they have a pre pre-training stage, a little warm-up
+
+1766
+01:15:12,100 --> 01:15:13,100
+phase at the very start.
+
+1767
+01:15:13,100 --> 01:15:14,560
+You can ignore that first row.
+
+1768
+01:15:14,560 --> 01:15:17,120
+And then they have their main pre-training phase
+
+1769
+01:15:17,120 --> 01:15:18,800
+in the middle row here.
+
+1770
+01:15:18,800 --> 01:15:21,140
+And this is a very standard parallelization strategy.
+
+1771
+01:15:21,140 --> 01:15:25,800
+Tensor parallel of 8, one context parallel, 16 pipeline
+
+1772
+01:15:25,800 --> 01:15:28,640
+parallel, and 128 data parallel.
+
+1773
+01:15:28,640 --> 01:15:30,680
+Big data parallel splits.
+
+1774
+01:15:30,680 --> 01:15:33,400
+And then at the very end, because they want a long context
+
+1775
+01:15:33,400 --> 01:15:35,140
+model, they do long context extension.
+
+1776
+01:15:35,140 --> 01:15:37,740
+And for this, they crank up the context parallel,
+
+1777
+01:15:37,740 --> 01:15:38,940
+lower the data parallel.
+
+1778
+01:15:38,940 --> 01:15:41,960
+And that's how they parallelize this very memory hungry stage
+
+1779
+01:15:41,960 --> 01:15:43,840
+for long context extension.
+
+1780
+01:15:43,840 --> 01:15:45,400
+And notice, we're in tensor parallel,
+
+1781
+01:15:45,400 --> 01:15:46,860
+not export parallel land.
+
+1782
+01:15:46,860 --> 01:15:50,140
+Because Llama3 405B is a gigantic dense model.
+
+1783
+01:15:50,140 --> 01:15:53,880
+It's not a MoE model.
+
+1784
+01:15:53,880 --> 01:15:57,060
+And as a side note, right, one thing that I don't talk about,
+
+1785
+01:15:57,060 --> 01:15:59,800
+but if you, for example, become an infra engineer at one
+
+1786
+01:15:59,800 --> 01:16:02,160
+of these companies, you'll notice
+
+1787
+01:16:02,160 --> 01:16:05,160
+is GPUs fail all the time.
+
+1788
+01:16:05,160 --> 01:16:12,060
+Apparently during Llama3 405B training, GPUs failed 148 times.
+
+1789
+01:16:12,060 --> 01:16:15,980
+And so you need lots of not just fast parallelism,
+
+1790
+01:16:15,980 --> 01:16:17,560
+you need redundancy in order to be
+
+1791
+01:16:17,560 --> 01:16:19,760
+able to deal with all these kind of horrible things
+
+1792
+01:16:19,760 --> 01:16:21,135
+that can happen to your training.
+
+1793
+01:16:21,135 --> 01:16:24,520
+So there's a distributed systems challenge as well.
+
+1794
+01:16:24,520 --> 01:16:28,960
+Gamma 2, which is a Google open source model,
+
+1795
+01:16:28,960 --> 01:16:34,160
+has FSDP plus tensor parallel and sequence parallel
+
+1796
+01:16:34,160 --> 01:16:36,140
+and uses these two strategies only.
+
+1797
+01:16:36,140 --> 01:16:39,240
+And the reason why I brought up Gamma 2
+
+1798
+01:16:39,240 --> 01:16:42,680
+is, as far as I understand, this is basically a realization
+
+1799
+01:16:42,680 --> 01:16:46,080
+of the Google claim that for TPUs, really
+
+1800
+01:16:46,080 --> 01:16:47,580
+you don't need to do pipelines.
+
+1801
+01:16:47,580 --> 01:16:49,600
+You just take a really big toroidal mesh
+
+1802
+01:16:49,600 --> 01:16:52,560
+and you tensor parallel over that big mesh network
+
+1803
+01:16:52,560 --> 01:16:54,360
+that you have.
+
+1804
+01:16:54,360 --> 01:16:56,960
+Unclear whether this can scale out forever.
+
+1805
+01:16:56,960 --> 01:16:59,700
+That has always been a little bit less clear to me.
+
+1806
+01:16:59,700 --> 01:17:04,400
+But at least the gamma scales, this is definitely the case.
+
+1807
+01:17:04,400 --> 01:17:07,200
+Finally, I took a look at some of the models that were trained
+
+1808
+01:17:07,200 --> 01:17:11,480
+this year, like Mistral 8x22B, and during my investigation,
+
+1809
+01:17:11,480 --> 01:17:13,790
+one of the things that I discovered was actually
+
+1810
+01:17:13,790 --> 01:17:16,390
+if you're interested in model training and parallelism
+
+1811
+01:17:16,390 --> 01:17:21,230
+configurations in the wild, NVIDIA has a repository called
+
+1812
+01:17:21,230 --> 01:17:25,590
+Megatron Bridge, where they release a lot of recommended
+
+1813
+01:17:25,590 --> 01:17:28,070
+training configurations for a lot of different model sizes
+
+1814
+01:17:28,070 --> 01:17:29,790
+and model settings.
+
+1815
+01:17:29,790 --> 01:17:32,790
+And you can take a look at what they end up saying is the right
+
+1816
+01:17:32,790 --> 01:17:39,610
+model configuration for an 8x22B MoE or DeepSeek V3 modeling.
+
+1817
+01:17:39,610 --> 01:17:42,690
+And so for Mixtral, they do expert parallel of 8,
+
+1818
+01:17:42,690 --> 01:17:45,810
+pipeline parallel of 4, and an additional tensor parallel of 4.
+
+1819
+01:17:45,810 --> 01:17:47,450
+This one for the attention layers.
+
+1820
+01:17:47,450 --> 01:17:49,750
+And you see this follows the prescription
+
+1821
+01:17:49,750 --> 01:17:54,270
+of, keep your expert parallel roughly around eight.
+
+1822
+01:17:54,270 --> 01:17:58,012
+Nemotron 3 Super follows the DeepSeek V3 model,
+
+1823
+01:17:58,012 --> 01:18:00,470
+has a bunch of expert parallel as well as context parallel,
+
+1824
+01:18:00,470 --> 01:18:02,230
+because they were doing extensions,
+
+1825
+01:18:02,230 --> 01:18:04,350
+at least in this article.
+
+1826
+01:18:04,350 --> 01:18:07,150
+And then the last one that I want to talk about
+
+1827
+01:18:07,150 --> 01:18:10,230
+is Qwen 3, which follows the DeepSeek
+
+1828
+01:18:10,230 --> 01:18:15,590
+recipe, which is a fairly large amount of expert parallel 32.
+
+1829
+01:18:15,590 --> 01:18:19,390
+And they have eight pipeline parallel and two tensor parallel
+
+1830
+01:18:19,390 --> 01:18:23,790
+to split up things like the attention matrices.
+
+1831
+01:18:23,790 --> 01:18:27,092
+It is actually interesting to see additionally
+
+1832
+01:18:27,092 --> 01:18:28,550
+the different kinds of benchmarking
+
+1833
+01:18:28,550 --> 01:18:32,050
+that NVIDIA folks have done for parallelizing different models.
+
+1834
+01:18:32,050 --> 01:18:34,610
+And you see, I won't go into details of what this is.
+
+1835
+01:18:34,610 --> 01:18:36,650
+This is in the NVIDIA bridge repo,
+
+1836
+01:18:36,650 --> 01:18:38,190
+if you want to take a look.
+
+1837
+01:18:38,190 --> 01:18:40,390
+There's all sorts of different configurations
+
+1838
+01:18:40,390 --> 01:18:42,870
+that you can pick even within tensor parallel that
+
+1839
+01:18:42,870 --> 01:18:45,930
+can significantly affect the performance of these.
+
+1840
+01:18:45,930 --> 01:18:49,950
+So the systems integration is quite significant.
+
+1841
+01:18:49,950 --> 01:18:53,270
+So to put everything together, I decided maybe
+
+1842
+01:18:53,270 --> 01:18:55,630
+I would build an overview.
+
+1843
+01:18:55,630 --> 01:18:59,150
+Really, the thing that's common to this is as much as you can,
+
+1844
+01:18:59,150 --> 01:19:01,010
+all the models use data parallel.
+
+1845
+01:19:01,010 --> 01:19:03,390
+They maximize the data parallel domains to the extent
+
+1846
+01:19:03,390 --> 01:19:04,830
+that they can.
+
+1847
+01:19:04,830 --> 01:19:08,030
+Tensor parallel almost always remains below eight.
+
+1848
+01:19:08,030 --> 01:19:10,290
+And expert parallel can sometimes be big now.
+
+1849
+01:19:10,290 --> 01:19:13,310
+And I think that's partially because of DeepSeek V3 and a lot
+
+1850
+01:19:13,310 --> 01:19:16,710
+of the infra that they built for large scale expert parallel
+
+1851
+01:19:16,710 --> 01:19:18,830
+training.
+
+1852
+01:19:18,830 --> 01:19:19,830
+Good.
+
+1853
+01:19:19,830 --> 01:19:20,710
+OK.
+
+1854
+01:19:20,710 --> 01:19:23,270
+So to put everything together, right.
+
+1855
+01:19:23,270 --> 01:19:26,030
+The highest level point, right, of this lecture
+
+1856
+01:19:26,030 --> 01:19:28,590
+is we need to think about multi-GPU,
+
+1857
+01:19:28,590 --> 01:19:31,750
+multi-node, maybe even multi-data center parallelism.
+
+1858
+01:19:31,750 --> 01:19:34,090
+And to think about efficiency in that regime,
+
+1859
+01:19:34,090 --> 01:19:37,650
+we need to really bring to bear all the approaches that we have.
+
+1860
+01:19:37,650 --> 01:19:39,890
+Because you've got fast links, you've got slow links,
+
+1861
+01:19:39,890 --> 01:19:43,390
+you've got techniques that make use of batch sizes and all
+
+1862
+01:19:43,390 --> 01:19:45,470
+these different resources that you all want
+
+1863
+01:19:45,470 --> 01:19:47,550
+to consume as much as possible.
+
+1864
+01:19:47,550 --> 01:19:49,670
+But given all of these, it turns out
+
+1865
+01:19:49,670 --> 01:19:51,950
+that there's fairly simple rules of thumb
+
+1866
+01:19:51,950 --> 01:19:54,550
+for combining all these different forms of parallelism
+
+1867
+01:19:54,550 --> 01:19:58,070
+to get in the end what is effectively
+
+1868
+01:19:58,070 --> 01:20:01,050
+full utilization of your compute hardware.
+
+1869
+01:20:01,050 --> 01:20:01,550
+Great.
+
+1870
+01:20:01,550 --> 01:20:05,220
+And next week, I think we're talking about scaling laws.

@@ -1,0 +1,3671 @@
+﻿1
+00:00:05,279 --> 00:00:05,680
+Cool.
+
+2
+00:00:05,680 --> 00:00:05,920
+ Yeah.
+
+3
+00:00:05,920 --> 00:00:08,800
+ So, so thanks so much uh everyone for coming.
+
+4
+00:00:08,800 --> 00:00:11,599
+ Um I think you you have a pretty cool course here.
+
+5
+00:00:11,599 --> 00:00:15,360
+ Um and thanks of course Percy for for inviting me to to give a talk.
+
+6
+00:00:15,360 --> 00:00:26,240
+ Uh so I think in this class you're mostly talking about kind of training and how to train the language models um and and kind of get to to this place where we can have these things
+
+7
+00:00:26,240 --> 00:00:28,480
+ that that can kind of talk back to you.
+
+8
+00:00:28,480 --> 00:00:36,000
+ Um in today I'm going to talk a little bit about once you have one of those models what it looks like from the other side.
+
+9
+00:00:36,000 --> 00:00:47,440
+ uh what it looks like to actually serve these models um turn you know to do do inference turn these things from say electricity into tokens into into intelligence and also what are
+
+10
+00:00:47,430 --> 00:00:59,840
+ some of the fun research problems and and research things that you can do um when you look at it from from that standpoint I'll start with some uh sort of high level motivation uh I
+
+11
+00:00:59,840 --> 00:01:08,720
+ think one thing that's become abundantly clear to all of us is that we are really going through almost a new indust industrial revolution in terms of these models and their capabilities.
+
+12
+00:01:08,720 --> 00:01:12,240
+ Um these slides I made during my job talks like two years ago.
+
+13
+00:01:12,240 --> 00:01:14,960
+ So the exact examples are getting pretty old.
+
+14
+00:01:14,960 --> 00:01:29,439
+ Uh but you can do you know human level text generation code generation uh cursor cloud code uh GPT 5.5 um not not just four uh you can generate images and videos or understand images
+
+15
+00:01:29,429 --> 00:01:31,439
+ and videos and process them.
+
+16
+00:01:31,439 --> 00:01:33,840
+ Um you can start to understand new modalities.
+
+17
+00:01:33,840 --> 00:01:39,439
+ So, we're starting to see some of the applications in the sciences in bio um in and health,
+
+18
+00:01:39,439 --> 00:01:42,479
+ DNA models, all these sorts of things.
+
+19
+00:01:42,479 --> 00:01:52,720
+ One of the things that has really been driving my research for a while is uh the question of what has made these advances possible and how can we improve on them um in the next generations.
+
+20
+00:01:52,720 --> 00:01:56,479
+ And one abundant driver of these capabilities is really scale.
+
+21
+00:01:56,479 --> 00:02:01,600
+ So again, this is uh at this point a pretty old um uh figure,
+
+22
+00:02:01,600 --> 00:02:05,920
+ but these models have really scaled up um in in massive ways.
+
+23
+00:02:05,910 --> 00:02:09,759
+ So in 2018, at the beginning of my PhD in antiquity,
+
+24
+00:02:09,759 --> 00:02:13,280
+ uh these were 100 million parameter models at their largest and we're like,
+
+25
+00:02:13,280 --> 00:02:15,680
+ "Oh my god, these things are are pretty crazy."
+
+26
+00:02:15,680 --> 00:02:18,800
+ By 2019, we thought that they were too dangerous to release.
+
+27
+00:02:18,790 --> 00:02:20,080
+ That's GPD2.
+
+28
+00:02:20,080 --> 00:02:23,680
+ I think in this class you can train a GPT2 quality model.
+
+29
+00:02:23,680 --> 00:02:24,800
+ I'm not sure if you did.
+
+30
+00:02:24,800 --> 00:02:26,720
+ if you tried hard enough, you could.
+
+31
+00:02:26,720 --> 00:02:30,560
+ Um, and uh, yeah, and today, of course,
+
+32
+00:02:30,560 --> 00:02:34,000
+ the you have open source models that are a trillion parameters and more.
+
+33
+00:02:34,000 --> 00:02:37,840
+ Uh, the frontier is probably at 5 to 10 trillion parameters.
+
+34
+00:02:37,830 --> 00:02:39,760
+ Um, it's it's pretty exciting.
+
+35
+00:02:39,760 --> 00:02:43,120
+ With these, you have a bunch of new capabilities like chat,
+
+36
+00:02:43,120 --> 00:02:46,319
+ uh, writing code, analyzing complex text,
+
+37
+00:02:46,319 --> 00:02:47,840
+ um, doing your homework for you,
+
+38
+00:02:47,840 --> 00:02:49,920
+ etc.
+
+39
+00:02:49,910 --> 00:02:55,599
+ Um what's really remarkable about this is that this transition is happening faster than we think.
+
+40
+00:02:55,599 --> 00:03:00,800
+ So certainly faster than I thought um uh at the beginning of my PhD a few years ago.
+
+41
+00:03:00,800 --> 00:03:07,040
+ So I I think one really apt analogy and and the dates actually kind of um match up in an interesting way.
+
+42
+00:03:07,040 --> 00:03:11,040
+ So in 1902 there are 130,000 working horses in Manhattan.
+
+43
+00:03:11,030 --> 00:03:14,720
+ So these are horses that you don't just have around for for giggles,
+
+44
+00:03:14,720 --> 00:03:19,040
+ but you actually have them because they they do they they play some key role.
+
+45
+00:03:19,040 --> 00:03:26,480
+ Um and they would these horses would produce uh each would produce pounds of manure a day times 130,000 horses,
+
+46
+00:03:26,480 --> 00:03:27,920
+ you have a real manure problem.
+
+47
+00:03:27,920 --> 00:03:37,840
+ So in fact um there were entire conferences that were just gathered around the question of entire academic conferences around what do we do about all the poop that these horses produce?
+
+48
+00:03:37,840 --> 00:03:40,400
+ So in 1898 they actually had one of these in New York.
+
+49
+00:03:40,400 --> 00:03:44,400
+ Um, and their conclusion from that conference was there's nothing we can do about the horse manure.
+
+50
+00:03:44,400 --> 00:03:48,720
+ You just have to hold your nose um and and deal with it.
+
+51
+00:03:48,720 --> 00:03:53,519
+ 10 years later, by 1912, cars had already outnumbered horses in Manhattan.
+
+52
+00:03:53,519 --> 00:03:56,640
+ So that 10-year transition, you saw this,
+
+53
+00:03:56,640 --> 00:04:05,200
+ you know, the these the these things that have been around for for centuries um start to be replaced by by cars.
+
+54
+00:04:05,190 --> 00:04:12,720
+ Um and I think for us for language models for a lot of the stuff that we do um that 1912 moment was probably last year.
+
+55
+00:04:12,720 --> 00:04:18,880
+ So at least for me last year I started writing the majority of my code using these language models.
+
+56
+00:04:18,880 --> 00:04:20,479
+ Most people in my team do it.
+
+57
+00:04:20,479 --> 00:04:22,400
+ Um I tell all my students to do it.
+
+58
+00:04:22,400 --> 00:04:24,720
+ Um except when they're doing their homework.
+
+59
+00:04:24,720 --> 00:04:31,919
+ Um but this is this is really a really exciting transition that that we're we're living through.
+
+60
+00:04:31,909 --> 00:04:38,479
+ One of the things that is really driving this is a lot of the scale is driven by um GPU.
+
+61
+00:04:38,479 --> 00:04:43,120
+ So uh in a very real sense you could say GPUs are the new oil.
+
+62
+00:04:43,120 --> 00:04:50,479
+ This is again a a a older announcement but you're seeing hundreds of billions of dollars and more of investment into GPUs.
+
+63
+00:04:50,469 --> 00:04:55,680
+ Um, you know, history rhymes in in interesting ways uh with the with with similar things,
+
+64
+00:04:55,680 --> 00:04:57,600
+ but their their entire countries,
+
+65
+00:04:57,600 --> 00:05:07,280
+ entire sovereign wealth funds that are making these things a major part of of their um of their of their piece.
+
+66
+00:05:07,270 --> 00:05:12,639
+ And one thing that is really abundantly clear is that inference is really the piece.
+
+67
+00:05:12,639 --> 00:05:17,120
+ So you can think of inference as the engine that turns electricity into intelligence.
+
+68
+00:05:17,120 --> 00:05:27,440
+ So the same way that you know oil is only useful in a uh in a car if you can have actually an engine that turns that that oil into useful kinetic motion.
+
+69
+00:05:27,440 --> 00:05:30,000
+ Um inference engines, GPU kernels,
+
+70
+00:05:30,000 --> 00:05:38,000
+ these are the things that that really turn uh that really turn these GPUs from from sand like Percy said into something that we can use today.
+
+71
+00:05:38,000 --> 00:05:39,919
+ Um and I think that's that's clear.
+
+72
+00:05:39,919 --> 00:05:44,160
+ So if you think about it, so these machine learning models uh they're really just DAGs of operations.
+
+73
+00:05:44,160 --> 00:05:47,360
+ there are some mathematical object that exists in the ether.
+
+74
+00:05:47,360 --> 00:05:49,440
+ The inference engines, the GPU kernels,
+
+75
+00:05:49,440 --> 00:05:50,479
+ all these pieces.
+
+76
+00:05:50,479 --> 00:05:54,560
+ Um, these are the things that you actually have to program and and map them down to ML operations.
+
+77
+00:05:54,560 --> 00:05:56,479
+ I think you do some of that in this class.
+
+78
+00:05:56,479 --> 00:05:58,560
+ Uh, I think you implement some flash attention,
+
+79
+00:05:58,560 --> 00:05:59,840
+ so some training side.
+
+80
+00:05:59,840 --> 00:06:03,520
+ Um, but there's a whole world of complexity when it comes to inference um,
+
+81
+00:06:03,520 --> 00:06:06,720
+ and the inference side of things.
+
+82
+00:06:06,710 --> 00:06:10,080
+ So if you take away nothing from today's talk,
+
+83
+00:06:10,080 --> 00:06:15,280
+ uh I I hope there there's one thing which is if you understand inference and understand the inference engines,
+
+84
+00:06:15,280 --> 00:06:20,639
+ if you understand the GPU kernels that underly a lot of the a lot of the core technology,
+
+85
+00:06:20,639 --> 00:06:24,639
+ you can enable full stack innovation in machine learning algorithms.
+
+86
+00:06:24,639 --> 00:06:30,960
+ So I'm going to start with in today's talk a highlevel overview of kind of the lifetime of a token.
+
+87
+00:06:30,960 --> 00:06:34,400
+ So when you make a request to one of these models,
+
+88
+00:06:34,400 --> 00:06:36,080
+ what happens to that request?
+
+89
+00:06:36,080 --> 00:06:38,479
+ How it goes through the entire inference service?
+
+90
+00:06:38,479 --> 00:06:40,960
+ What are some of the interesting choices you have to make?
+
+91
+00:06:40,960 --> 00:06:50,080
+ Um and then I'll dive deeper into two uh kind of more research projects around if you take certain pieces of this um of this system.
+
+92
+00:06:50,080 --> 00:06:54,800
+ What are questions that you can ask and and what are some some things that you can do?
+
+93
+00:06:54,790 --> 00:06:57,360
+ Uh before I get into all the the technical details,
+
+94
+00:06:57,360 --> 00:06:58,720
+ I'll quickly make a plug.
+
+95
+00:06:58,720 --> 00:07:00,400
+ So I'm here representing two organizations.
+
+96
+00:07:00,400 --> 00:07:07,199
+ And so one is UCSD where I where I have a small lab um and and uh some some of their work is represented in this talk.
+
+97
+00:07:07,199 --> 00:07:13,039
+ Then I'm also representing together um who did a bunch of other uh of the work that's represented in this talk.
+
+98
+00:07:13,039 --> 00:07:14,960
+ Um together is an AI cloud.
+
+99
+00:07:14,960 --> 00:07:20,560
+ So there's GPUs inference fine-tuning um and all the rest.
+
+100
+00:07:20,550 --> 00:07:23,199
+ Heavy research background so including Percy.
+
+101
+00:07:23,199 --> 00:07:26,319
+ I don't think you can see my mouse but see he's on the screen.
+
+102
+00:07:26,319 --> 00:07:29,680
+ And then we've got a a big research presence um behind that.
+
+103
+00:07:29,680 --> 00:07:34,240
+ and behind a lot of the things that that you're going to see in this talk.
+
+104
+00:07:34,230 --> 00:07:39,840
+ All right, I'll start by kind of giving a highle overview of a lifetime of a token.
+
+105
+00:07:39,840 --> 00:07:43,520
+ So, when you make a request to a inference system,
+
+106
+00:07:43,520 --> 00:07:53,759
+ what are the different pieces that are that are going to go through um and these slides are a crib from a presentation that my student Austin made um when uh and and from his experiences
+
+107
+00:07:53,759 --> 00:07:55,360
+ at together.
+
+108
+00:07:55,360 --> 00:08:00,240
+ I'll make a note that all of the slides are completely AI generated from Nano Banana Pro.
+
+109
+00:08:00,240 --> 00:08:04,240
+ Um, but they're they're pretty good as long as you don't look too closely at at the text.
+
+110
+00:08:04,240 --> 00:08:07,199
+ So, I'd say at a high level everything is correct.
+
+111
+00:08:07,199 --> 00:08:10,960
+ If you look very closely, you'll see things that are very wrong.
+
+112
+00:08:10,950 --> 00:08:11,680
+ Okay.
+
+113
+00:08:11,680 --> 00:08:16,800
+ Um, this is a overview of kind of all the pieces of an inference engine.
+
+114
+00:08:16,790 --> 00:08:20,879
+ So, I'll give a a a highle description of kind of how it works.
+
+115
+00:08:20,879 --> 00:08:26,879
+ So you get a request in the first thing that's going to happen is that the request gets scheduled to various different GPUs.
+
+116
+00:08:26,879 --> 00:08:32,080
+ You might have disagregated prefill and decode on on different different machines.
+
+117
+00:08:32,080 --> 00:08:39,200
+ Um you'll run that request against a KP cache to see have I seen this request or or versions of this request before?
+
+118
+00:08:39,200 --> 00:08:44,240
+ Is there some uh is there some compute that I can that I can actually save?
+
+119
+00:08:44,240 --> 00:08:49,120
+ Um then you'll start executing the the kind of the core machine learning code.
+
+120
+00:08:49,120 --> 00:08:53,120
+ Uh so here are new tokens, here are new operations that we need to compute.
+
+121
+00:08:53,120 --> 00:08:56,000
+ Um there are various optimizations that you can make.
+
+122
+00:08:56,000 --> 00:08:59,120
+ So you can split that computation across different machines.
+
+123
+00:08:59,120 --> 00:09:01,120
+ You can parallelize across different nodes.
+
+124
+00:09:01,120 --> 00:09:08,560
+ You can parallelize it within a node across different GPUs depending on the size of your model depending on how you can split up split that up.
+
+125
+00:09:08,560 --> 00:09:16,720
+ Um, and I think one of the exciting things is that as we are uh as the as the hardware is developing,
+
+126
+00:09:16,720 --> 00:09:20,480
+ we're actually going to start to see more different choices that you can make there.
+
+127
+00:09:20,480 --> 00:09:23,279
+ Um, but once you make all those choices,
+
+128
+00:09:23,279 --> 00:09:24,880
+ once you execute all the code at the end,
+
+129
+00:09:24,880 --> 00:09:26,160
+ you get the tokens out, you can say,
+
+130
+00:09:26,160 --> 00:09:30,320
+ "Hey chat, what did Percy mean when he said uh linear regression?" Um,
+
+131
+00:09:30,320 --> 00:09:32,160
+ because I skipped that day in my class.
+
+132
+00:09:32,160 --> 00:09:38,320
+ Um, and you get you get this whole end to- end experience.
+
+133
+00:09:38,310 --> 00:09:46,160
+ One of the things that I think is useful to to start thinking about um is what do these different workloads look like?
+
+134
+00:09:46,160 --> 00:09:49,680
+ Um and there there's quite a different quite a bit of different things.
+
+135
+00:09:49,680 --> 00:09:58,560
+ So if you this is one of the sites where if you look too closely like I think some of the fives turned into S's um but one of the things that that you want to think about is when you're
+
+136
+00:09:58,560 --> 00:10:06,240
+ actually serving production traffic it doesn't necessarily look like certainly doesn't look like what the the type of tokens that you see during training.
+
+137
+00:10:06,240 --> 00:10:12,240
+ Um but it also kind of doesn't look like if you just uh made up um a traffic workload in your head.
+
+138
+00:10:12,240 --> 00:10:15,680
+ So what what is the type of thing that that that we typically see?
+
+139
+00:10:15,670 --> 00:10:21,680
+ So for a particular workload um you'll see a particular distribution of input and output tokens.
+
+140
+00:10:21,680 --> 00:10:24,160
+ So uh let's take a coding workload.
+
+141
+00:10:24,160 --> 00:10:30,880
+ So let's say you're somebody like cursor um where you have uh your whole codebase is available to the agent.
+
+142
+00:10:30,880 --> 00:10:32,320
+ You're asking questions about it.
+
+143
+00:10:32,320 --> 00:10:36,480
+ Um, typically what that'll look like is that you'll have a long amount of input,
+
+144
+00:10:36,480 --> 00:10:38,720
+ so tens of thousands of input tokens.
+
+145
+00:10:38,720 --> 00:10:41,120
+ Um, and then depending on how you've trained your model,
+
+146
+00:10:41,120 --> 00:10:48,560
+ the model might output some amount of thinking tokens or it might uh output some some short uh some some short input.
+
+147
+00:10:48,560 --> 00:10:50,480
+ And this will change based on workload.
+
+148
+00:10:50,480 --> 00:10:53,040
+ It'll change based on a model.
+
+149
+00:10:53,040 --> 00:11:02,079
+ Um so a particular a coding workload for example will look very different from a uh summarization workload or or a narrative summarization.
+
+150
+00:11:02,079 --> 00:11:11,680
+ So if your work involves like pasting entire books into a chat window and then talking back and forth to figure out what's happening that's going to look very different than a standard
+
+151
+00:11:11,680 --> 00:11:12,880
+ chat um thing.
+
+152
+00:11:12,880 --> 00:11:21,279
+ So if you just go up to chat and say hey explain to me first order calculus or whatever um that's going to have very different workload shapes.
+
+153
+00:11:21,269 --> 00:11:23,360
+ uh the way that we use language models today,
+
+154
+00:11:23,360 --> 00:11:27,440
+ there's very uh turnbased agentic workflows.
+
+155
+00:11:27,440 --> 00:11:30,320
+ So when you're coding, you go back and forth with your coding agent,
+
+156
+00:11:30,310 --> 00:11:31,279
+ say, "Hey, do this.
+
+157
+00:11:31,279 --> 00:11:32,240
+ No, I didn't mean that.
+
+158
+00:11:32,240 --> 00:11:32,720
+ Do that."
+
+159
+00:11:32,720 --> 00:11:37,040
+ Your coding agents themselves can iterate on the language models quite a bit.
+
+160
+00:11:37,040 --> 00:11:41,440
+ So they might um uh they might invoke some tools and say,
+
+161
+00:11:41,430 --> 00:11:48,959
+ "GP, search for something in my in my in my data in my codebase and then take that and go uh feed it back to the model.
+
+162
+00:11:48,959 --> 00:11:53,279
+ I might try to do an internet search and look up this thing that my user asked me.
+
+163
+00:11:53,279 --> 00:11:59,040
+ Um so typically you have these multiple turns um in your conversation.
+
+164
+00:11:59,030 --> 00:12:02,800
+ The another interesting piece is different applications will have different times.
+
+165
+00:12:02,800 --> 00:12:13,600
+ So in your if you're in a fast interactive chatbased loop or if you're talking on your phone to chat GPT in the voice mode um you might have relatively quick responses.
+
+166
+00:12:13,600 --> 00:12:18,240
+ If on the other hand, you've put together a an aentic workflow where you say,
+
+167
+00:12:18,240 --> 00:12:19,839
+ "Hey, go do this for me.
+
+168
+00:12:19,839 --> 00:12:22,959
+ I'm going to leave you alone and just iterate um on your own,
+
+169
+00:12:22,949 --> 00:12:24,399
+ you'll have a different cadence."
+
+170
+00:12:24,399 --> 00:12:26,240
+ If at some point your agent gets stuck and it's,
+
+171
+00:12:26,240 --> 00:12:27,120
+ "Hey, hey, help.
+
+172
+00:12:27,120 --> 00:12:30,639
+ I I need to I need to ask for advice and you and you don't notice it,
+
+173
+00:12:30,639 --> 00:12:33,040
+ there might be another gap between turns."
+
+174
+00:12:33,040 --> 00:12:36,560
+ So, all of these things start to define what your workload looks like.
+
+175
+00:12:36,560 --> 00:12:40,000
+ So, how many to how many new tokens do you get in it every time?
+
+176
+00:12:40,000 --> 00:12:41,920
+ How many tokens are you going to generate?
+
+177
+00:12:41,920 --> 00:12:43,519
+ How many how long is my session?
+
+178
+00:12:43,519 --> 00:12:52,880
+ So, am I a very sticky user who keeps going back and forth with my claude agent or am I a or am I a am I a user who's just going to ask one question and then leave and come back the
+
+179
+00:12:52,880 --> 00:12:53,680
+ next day?
+
+180
+00:12:53,680 --> 00:12:57,519
+ Um, and and of course, how how long between turns do you have?
+
+181
+00:12:57,519 --> 00:13:07,360
+ Um, I, for example, uh have a chat that I've had with a chat GPT agent about how I should set up my workout and my um my workouts week to week.
+
+182
+00:13:07,360 --> 00:13:11,120
+ Um, and I interact with that chat about once every other week.
+
+183
+00:13:11,120 --> 00:13:16,800
+ Um and uh so that is a very different traffic pattern than than some of the other ones.
+
+184
+00:13:16,800 --> 00:13:19,920
+ Um and then of course depending on your application you might have different targets.
+
+185
+00:13:19,920 --> 00:13:29,200
+ So if you have a if you have a interactive application you might say I want to get the first tokens back in less than a second so that the the agent can say hey I'm thinking and I'm
+
+186
+00:13:29,200 --> 00:13:31,040
+ going to say blah blah blah blah.
+
+187
+00:13:31,040 --> 00:13:40,320
+ Um or I might say uh I know I'm going to be generating 500 tokens and I want that whole response to come back within a certain amount of time so that my user can read it fast enough.
+
+188
+00:13:40,320 --> 00:13:45,920
+ um and uh and and all these pieces.
+
+189
+00:13:45,910 --> 00:13:52,800
+ So as that as that when that uh request comes in um there are a few basic pieces that that come in.
+
+190
+00:13:52,800 --> 00:13:56,800
+ I'll I'll rest a bit on the prefill and decode piece in a little bit.
+
+191
+00:13:56,800 --> 00:14:00,000
+ But so let's say you have some amount of um text that comes in.
+
+192
+00:13:59,990 --> 00:14:01,920
+ The first thing you're going to is you're going to tokenize it.
+
+193
+00:14:01,920 --> 00:14:03,920
+ Um I think you're all familiar with that.
+
+194
+00:14:03,920 --> 00:14:10,720
+ Um, but then once there you start getting into a somewhat complex scheduling regime because you have to ask questions like,
+
+195
+00:14:10,710 --> 00:14:12,480
+ have I seen these tokens before?
+
+196
+00:14:12,480 --> 00:14:16,560
+ Can I just look up some some of the activations in a cache?
+
+197
+00:14:16,560 --> 00:14:24,639
+ Um, and then you get to these basically these two uh major pieces of the actual uh of the actual machine learning computation.
+
+198
+00:14:24,639 --> 00:14:28,079
+ Um, these are called prefill and decode and they're very different be.
+
+199
+00:14:28,079 --> 00:14:37,040
+ So prefill means let's say you have 10,000 tokens that you've never seen before and you want to go compute um you know what the activations and what the logic should be.
+
+200
+00:14:37,040 --> 00:14:39,680
+ So 10,000 tokens in one token out.
+
+201
+00:14:39,670 --> 00:14:41,600
+ That's a very computebound operation.
+
+202
+00:14:41,600 --> 00:14:45,760
+ So that actually looks pretty close to the things that you guys have been looking at for training time.
+
+203
+00:14:45,760 --> 00:14:48,560
+ So when you're training you have some large amount of tokens,
+
+204
+00:14:48,560 --> 00:14:50,079
+ you write your flash tension kernel,
+
+205
+00:14:50,079 --> 00:14:51,279
+ you run your training loop.
+
+206
+00:14:51,279 --> 00:14:52,880
+ Um prefill is very similar.
+
+207
+00:14:52,880 --> 00:14:54,959
+ You just don't run your backwards pass.
+
+208
+00:14:54,959 --> 00:14:56,480
+ And then you have this thing called decode.
+
+209
+00:14:56,480 --> 00:15:00,160
+ So decode is um when you're then just generating one token at a time.
+
+210
+00:15:00,160 --> 00:15:02,079
+ So you pass in these 10,000 tokens.
+
+211
+00:15:02,079 --> 00:15:03,839
+ It's like, hey, here's my codebase.
+
+212
+00:15:03,839 --> 00:15:06,240
+ Tell me what function ABC does.
+
+213
+00:15:06,240 --> 00:15:11,440
+ Um the model is going to process the whole prompt and then start generating one token at a time,
+
+214
+00:15:11,430 --> 00:15:15,360
+ maybe three or four tokens if you have speculative decoding working.
+
+215
+00:15:15,360 --> 00:15:17,040
+ And if you think about that operation,
+
+216
+00:15:17,040 --> 00:15:19,199
+ so every time you generate a new token,
+
+217
+00:15:19,199 --> 00:15:21,199
+ you then have to run that back through the model.
+
+218
+00:15:21,189 --> 00:15:25,279
+ If you do the math on that, there's actually not too many flops that you need to compute.
+
+219
+00:15:25,279 --> 00:15:31,360
+ Um so it's going to be a relatively light um um computation uh but it's going to be very memory bandwidth bound.
+
+220
+00:15:31,360 --> 00:15:37,600
+ So what that means is you're going to be running uh you have to load up the model every time just to generate a single token.
+
+221
+00:15:37,600 --> 00:15:47,360
+ Um at the end you get uh at the end of that model pass of course you then have a a a single number that represents a token that then gets turned into a string.
+
+222
+00:15:47,360 --> 00:15:50,000
+ You probably do a little bit of processing on that.
+
+223
+00:15:49,990 --> 00:15:51,680
+ So you look for stop tokens.
+
+224
+00:15:51,680 --> 00:16:04,240
+ you check um you know you you might run a safety check to say oh is is my user trying to uh hack into the system in a bad way um etc and then at the out you get the the nice tokens
+
+225
+00:16:04,230 --> 00:16:16,079
+ um and the inference engine is really running in this loop kind of waiting for these requests to come in um so it's rating so it's running this scheduling execution uh token sampling
+
+226
+00:16:16,079 --> 00:16:29,519
+ loop and and repeating So I'll get into a little bit of so now we can take one step deeper and start to look at um what does it look like when you have a system that is processing 
+
+227
+00:16:29,519 --> 00:16:31,600
+many different requests at a time.
+
+228
+00:16:31,600 --> 00:16:35,680
+ So we have this phenomenon called uh this technique called continuous batching.
+
+229
+00:16:35,680 --> 00:16:41,120
+ So the way to read this uh figure is that um it is time is flowing downward.
+
+230
+00:16:41,120 --> 00:16:44,560
+ So as you go down there are new requests that are coming in.
+
+231
+00:16:44,560 --> 00:16:46,639
+ Um, so let's say if we go to step one,
+
+232
+00:16:46,639 --> 00:16:47,920
+ you have some long request.
+
+233
+00:16:47,910 --> 00:16:59,040
+ You have a user uh that is asking for um some uh to to analyze some some long piece of some long document and the and the and the engine is going and generating a bunch of tokens out.
+
+234
+00:16:59,040 --> 00:17:04,400
+ You might have another request comes in um that that starts to take up um some resources.
+
+235
+00:17:04,400 --> 00:17:06,640
+ So these resources are first compute resources.
+
+236
+00:17:06,640 --> 00:17:10,959
+ You have to run uh run things over uh multiple requests at once.
+
+237
+00:17:10,959 --> 00:17:14,319
+ They can be memory resources if you're filling up a KV cache.
+
+238
+00:17:14,319 --> 00:17:20,240
+ Um, and uh, so you'll see these multiple requests happening at the same time.
+
+239
+00:17:20,240 --> 00:17:25,520
+ Um, after a step that short request might finish and you get a new request that comes in.
+
+240
+00:17:25,520 --> 00:17:29,039
+ Um, and maybe it's it's running for a couple steps.
+
+241
+00:17:29,039 --> 00:17:31,679
+ Uh, if you have another request that comes in,
+
+242
+00:17:31,679 --> 00:17:33,600
+ um, maybe it's another very long request.
+
+243
+00:17:33,600 --> 00:17:35,600
+ So that's going to be that orange one in step four,
+
+244
+00:17:35,600 --> 00:17:37,520
+ but maybe you don't have enough GPU memory.
+
+245
+00:17:37,520 --> 00:17:40,640
+ So you need to store all your KV cache on your GPU.
+
+246
+00:17:40,640 --> 00:17:41,679
+ Maybe you've run out.
+
+247
+00:17:41,679 --> 00:17:45,120
+ You might start queuing for for some reason there.
+
+248
+00:17:45,120 --> 00:17:47,200
+ Um then once that long request is done,
+
+249
+00:17:47,200 --> 00:17:48,799
+ you can start the new request.
+
+250
+00:17:48,799 --> 00:17:49,919
+ Um and then etc.
+
+251
+00:17:49,919 --> 00:17:51,120
+ You can watch it run.
+
+252
+00:17:51,120 --> 00:17:57,200
+ So already you're seeing some of the complexity when you have many different requests uh living in a system.
+
+253
+00:17:57,200 --> 00:18:02,400
+ Um and and how it how it goes on.
+
+254
+00:18:02,390 --> 00:18:07,760
+ One of the pieces that that's quite important is this thing called a KV cache.
+
+255
+00:18:07,760 --> 00:18:21,200
+ Um so the way to think about this is that uh you probably have a lot of users who are saying hi chat GPT or or hi claude and then uh theoretically you don't need to compute new activations
+
+256
+00:18:21,190 --> 00:18:23,919
+ and and run that again for for every single user.
+
+257
+00:18:23,919 --> 00:18:34,880
+ Um or if you have a a long book that the user has passed in you compute you run the prefill over that once and then the next time you get some addendum to that request the next turn
+
+258
+00:18:34,870 --> 00:18:38,640
+ in the conversation you don't need to compute um the the whole thing again.
+
+259
+00:18:38,640 --> 00:18:49,840
+ So we we have these mechanisms called KV caches uh that that use prefix sharing that say hey I have this new set of tokens that comes in use a very traditional data structure like a
+
+260
+00:18:49,840 --> 00:19:01,919
+ basic tree look at which tokens have I seen before which tokens are new um uh and then basically do a lookup of what those activations are going to look like once you actually have
+
+261
+00:19:01,919 --> 00:19:04,480
+ the computation on the GPUs.
+
+262
+00:19:04,480 --> 00:19:05,840
+ There's various ways to split it.
+
+263
+00:19:05,840 --> 00:19:08,799
+ Um, so I I'm not sure if you if you talked about this too much,
+
+264
+00:19:08,799 --> 00:19:16,320
+ but let's say you have a trillion parameter model and you're running on uh let's call it 280 gigabyte GPUs.
+
+265
+00:19:16,320 --> 00:19:21,200
+ Um, you're not going to be able to fit the full the whole model onto each GPU.
+
+266
+00:19:21,200 --> 00:19:23,360
+ Um, so there are various ways that you might split it.
+
+267
+00:19:23,360 --> 00:19:28,320
+ So you might take every tensor and split it uh four ways across four GPUs.
+
+268
+00:19:28,310 --> 00:19:30,160
+ This is called tensor parallelism.
+
+269
+00:19:30,160 --> 00:19:35,200
+ Or uh today we have a lot of the state-of-the-art models are mixture of experts models.
+
+270
+00:19:35,200 --> 00:19:40,559
+ So they have the you have these individual experts that get selectively activated depending on different tokens.
+
+271
+00:19:40,559 --> 00:19:43,039
+ You can split those across different GPUs.
+
+272
+00:19:43,039 --> 00:19:47,120
+ The choices that you make at this at this point will determine what are the bottlenecks.
+
+273
+00:19:47,120 --> 00:19:51,760
+ How many uh you know how many GPUs do you need to run your model?
+
+274
+00:19:51,760 --> 00:19:58,160
+ Uh how many sessions can you serve at the same time um etc.
+
+275
+00:19:58,150 --> 00:20:05,120
+ One of the big thing that that that happens is that we tend to split preill and decode onto different GPUs,
+
+276
+00:20:05,110 --> 00:20:06,799
+ different sets of machines.
+
+277
+00:20:06,799 --> 00:20:11,919
+ Um, and that's because they have very different compute um bottlenecks and compute characteristics.
+
+278
+00:20:11,919 --> 00:20:14,720
+ So prefill looks a lot like what you guys do during training.
+
+279
+00:20:14,710 --> 00:20:16,240
+ Uh, you you just run it.
+
+280
+00:20:16,240 --> 00:20:17,840
+ It's very flopheavy.
+
+281
+00:20:17,840 --> 00:20:20,880
+ Um, you can really use use the most out of your GPUs.
+
+282
+00:20:20,880 --> 00:20:30,880
+ Decoder on the other hand is very memory bandwidth heavy um because you're not doing that much compute but you still have to load up all the um all the uh all the model weights at the
+
+283
+00:20:30,880 --> 00:20:31,440
+ same time.
+
+284
+00:20:31,440 --> 00:20:33,679
+ These things will also take different amounts of time.
+
+285
+00:20:33,679 --> 00:20:37,840
+ So prefill will typically take a lot longer than a single decode step,
+
+286
+00:20:37,830 --> 00:20:42,000
+ but you're going to be running a lot more decode steps because you will run prefill once for a prompt,
+
+287
+00:20:42,000 --> 00:20:46,240
+ you'll run decode uh once for for every token that you generate.
+
+288
+00:20:46,240 --> 00:20:53,679
+ So a very basic optimization that um that that pretty much we've all started adopting is that you'll run pre-fill on one set of workers,
+
+289
+00:20:53,679 --> 00:21:00,799
+ decode on another set of workers um so that you can specialize those two computations to to different pieces of the stack.
+
+290
+00:21:00,799 --> 00:21:06,000
+ Um and there turns out there there's a lot of innovation that you can have when you when you have these splits.
+
+291
+00:21:06,000 --> 00:21:09,679
+ uh some things that you might have heard of that when Nvidia bought Grock,
+
+292
+00:21:09,679 --> 00:21:15,600
+ so Nvidia the king of GPUs buys this new kind of um infancy chip.
+
+293
+00:21:15,590 --> 00:21:21,919
+ One of the reasons is that uh the decode workload is so different from the prefield workload that if you're looking at decode,
+
+294
+00:21:21,919 --> 00:21:24,559
+ you can uh you can be using very different chips.
+
+295
+00:21:24,559 --> 00:21:27,600
+ Um so uh for example, in the next generation of hardware,
+
+296
+00:21:27,600 --> 00:21:31,679
+ Nvidia is planning on using its GPUs for the prefill side,
+
+297
+00:21:31,679 --> 00:21:34,720
+ using these LPU Gro chips for the decode.
+
+298
+00:21:34,720 --> 00:21:37,840
+ You see similar things um with Cerebra.
+
+299
+00:21:37,840 --> 00:21:40,799
+ So OpenAI has this compute partnership with Cerebras.
+
+300
+00:21:40,799 --> 00:21:43,200
+ It's another chip that's much better at decode.
+
+301
+00:21:43,200 --> 00:21:52,320
+ Uh there are other companies like Sabbonova and so on um that are also making bets along various parts of this space.
+
+302
+00:21:52,310 --> 00:21:54,799
+ Uh here here's a fun one a interesting one.
+
+303
+00:21:54,799 --> 00:21:59,919
+ So um when you actually start deploying these inference engines at scale,
+
+304
+00:21:59,919 --> 00:22:03,520
+ so when you're starting to serve trillions of tokens or more a day,
+
+305
+00:22:03,520 --> 00:22:05,760
+ uh you start to get some pretty nasty bugs.
+
+306
+00:22:05,750 --> 00:22:07,280
+ So this is a set of bugs.
+
+307
+00:22:07,280 --> 00:22:16,000
+ I think most of these happened um in uh I want to say late last year um with some of the open-source inference engines.
+
+308
+00:22:16,000 --> 00:22:28,320
+ Um and uh and and basically so you'll one of the characteristics of these large scale systems is that something that will work well at a small scale will inevitably start breaking at
+
+309
+00:22:28,320 --> 00:22:28,960
+ a large scale.
+
+310
+00:22:28,960 --> 00:22:34,320
+ So we're talking um events that happen with 0.001% of the time or or less.
+
+311
+00:22:34,320 --> 00:22:37,840
+ Um some of these uh can be uh so nan.
+
+312
+00:22:37,840 --> 00:22:45,600
+ So sometimes um you'll have a kernel that is very slightly wrong but um but the conditions for triggering it are very rare.
+
+313
+00:22:45,600 --> 00:22:53,760
+ um and you will start having some of your logits uh turn into nans halfway through the uh uh halfway through the computation.
+
+314
+00:22:53,760 --> 00:22:57,919
+ When that happens, we we figured out that the model starts outputting the same token.
+
+315
+00:22:57,919 --> 00:23:08,000
+ So I think some model the the output just starts saying hi h highi highi highi high after a while um or or start outputting exclamation points um and you get caught into these loops.
+
+316
+00:23:08,000 --> 00:23:14,559
+ Um uh another model at some point uh someone made a change to how you're handling tool calls.
+
+317
+00:23:14,559 --> 00:23:21,520
+ So tool calls are uh when the model says hey I want to I want to make an internet search or something like that.
+
+318
+00:23:21,520 --> 00:23:29,840
+ So the model will actually say go do an internet search and then your end harness has to then go use old-fashioned code to do the internet search.
+
+319
+00:23:29,840 --> 00:23:36,720
+ Um at some point um uh those tool calls stop being processed correctly um in in one of the engines.
+
+320
+00:23:36,720 --> 00:23:47,280
+ And the symptom for that was that the completion length um shot up because um the the model would say hey make an internet search and then it would it would uh usually usually when
+
+321
+00:23:47,270 --> 00:23:55,919
+ the model was behaving correctly it says hey make an internet search I'm done go return to the user uh go do that whatever but in this case uh it wasn't returning correctly so it would
+
+322
+00:23:55,919 --> 00:24:04,880
+ say hey make an internet search hey make an internet search hey I don't know why there's no internet search going on it would just get into this very long doom loop um uh for tens of
+
+323
+00:24:04,880 --> 00:24:18,480
+ thousands of tokens Um there's another one that um uh this one was was interesting because it actually took out I think a number of inference providers at the same time um and actually
+
+324
+00:24:18,480 --> 00:24:21,120
+ got blamed on a quantization issue.
+
+325
+00:24:21,120 --> 00:24:32,480
+ Um but actually what was happening was a much more subtle bug where um uh the model would just suddenly randomly start to output Chinese characters um when when it had no reason to.
+
+326
+00:24:32,480 --> 00:24:44,400
+ So um uh for some models at sometime there's some speculation oh they must have fine-tuned on a Chinese model because my model certainly starts I ask it a question in English and starts
+
+327
+00:24:44,400 --> 00:24:46,320
+ speaking back to me in Chinese.
+
+328
+00:24:46,310 --> 00:24:53,120
+ Um actually what was happening is that uh there was just an off by one error in one of the kernels and it would be a very subtle bug.
+
+329
+00:24:53,120 --> 00:25:04,640
+ So sometimes um you would read in some extra uh some extra uninitialized memory space um in from your GPU run it through attention then at the end of that whole process you get a random
+
+330
+00:25:04,640 --> 00:25:13,279
+ Chinese character then the model will go why did I start suddenly thinking Chinese I must be uh I must be you know the user must be asking me a question in Chinese and then it will
+
+331
+00:25:13,269 --> 00:25:14,960
+ just go veer off into Chinese.
+
+332
+00:25:14,960 --> 00:25:17,760
+ Um, so, uh, sometimes when this happens,
+
+333
+00:25:17,760 --> 00:25:21,279
+ it's because the model has legitimately been trained to say,
+
+334
+00:25:21,279 --> 00:25:23,279
+ uh, to to to think in Chinese.
+
+335
+00:25:23,279 --> 00:25:26,320
+ Sometimes, um, it can just be off by one bug,
+
+336
+00:25:26,320 --> 00:25:30,640
+ um, in somebody's code.
+
+337
+00:25:30,630 --> 00:25:35,120
+ Um, some interesting things that that are starting to happen uh,
+
+338
+00:25:35,120 --> 00:25:37,840
+ in in a lot of the more advanced inference stacks.
+
+339
+00:25:37,830 --> 00:25:47,039
+ Um so a major piece of running um large production systems is that you want to have as large of a KV cache as possible.
+
+340
+00:25:47,029 --> 00:25:58,720
+ So it is best if you can uh cache requests from many different users or from the same user across many different sessions um and and be able to run as many sessions as possible.
+
+341
+00:25:58,720 --> 00:26:04,960
+ Uh you first start this by storing your KV cache on GPU um and then you quickly run out of GPU memory.
+
+342
+00:26:04,960 --> 00:26:08,080
+ So the next you can start storing into CPU DRAM.
+
+343
+00:26:08,080 --> 00:26:12,799
+ Um so uh if you're paying attention to um Jensen's keynotes,
+
+344
+00:26:12,799 --> 00:26:17,520
+ he's he's recently started getting very obsessed with CPU performance.
+
+345
+00:26:17,520 --> 00:26:24,559
+ Um one of the reasons is because uh a past generation of CPUs was actually really slow.
+
+346
+00:26:24,559 --> 00:26:30,240
+ Um and as a result started bottlenecking a bunch of um a bunch of very important workloads.
+
+347
+00:26:30,240 --> 00:26:42,320
+ Um and and as a result, you start paying attention because if your $500,000,000 machine is being bottlenecked by the thousand CPU um that you purchase to kind of put on top of it,
+
+348
+00:26:42,320 --> 00:26:44,240
+ um that that's not a great place.
+
+349
+00:26:44,240 --> 00:26:48,799
+ One of the reasons that can happen is that you might be storing your KV cache on CPU memory.
+
+350
+00:26:48,799 --> 00:26:53,039
+ Um and so you really care about the speed of being able to read that KV cache back.
+
+351
+00:26:53,039 --> 00:26:57,200
+ Uh next, you might put uh more KV cache onto the disk itself.
+
+352
+00:26:57,200 --> 00:26:59,840
+ Um and then you start caring about SSDs.
+
+353
+00:26:59,840 --> 00:27:01,279
+ um and SSD space.
+
+354
+00:27:01,279 --> 00:27:06,799
+ Um again, you've probably heard these rumblings about OpenAI buying up all the SSD,
+
+355
+00:27:06,799 --> 00:27:08,400
+ all the DRAM in the world.
+
+356
+00:27:08,390 --> 00:27:15,679
+ Part of the reason is for stuff like this um where you want to store as much stuff in your KV cache as you can.
+
+357
+00:27:15,669 --> 00:27:17,840
+ And then of course when you're actually building your engine,
+
+358
+00:27:17,840 --> 00:27:20,400
+ there's this complicated dance of uh you know,
+
+359
+00:27:20,400 --> 00:27:22,960
+ I haven't seen the these tokens in a while.
+
+360
+00:27:22,960 --> 00:27:29,360
+ Maybe I'll evict it, send it onto the CPU or send it into disk or send into some other global store.
+
+361
+00:27:29,360 --> 00:27:31,679
+ When I get a new request in, I have to go look,
+
+362
+00:27:31,679 --> 00:27:33,679
+ I have to go wait for those to come in,
+
+363
+00:27:33,669 --> 00:27:36,240
+ fetch them, load them up into my thing,
+
+364
+00:27:36,230 --> 00:27:40,480
+ and then and then we're happy.
+
+365
+00:27:40,470 --> 00:27:46,400
+ >> CPU offloading isn't like a special kind of workload that gets offloaded like for for like something fast,
+
+366
+00:27:46,400 --> 00:27:48,480
+ you don't want to do this, right?
+
+367
+00:27:48,470 --> 00:27:50,240
+ >> Time to hit a SSD is very long.
+
+368
+00:27:50,230 --> 00:27:51,200
+ >> Can you repeat the question?
+
+369
+00:27:51,190 --> 00:27:51,440
+ >> Yes.
+
+370
+00:27:51,440 --> 00:27:51,679
+ Yeah.
+
+371
+00:27:51,679 --> 00:27:51,840
+ Yeah.
+
+372
+00:27:51,840 --> 00:27:57,919
+ So the question is um so for this offloading is it a particular type of workload that that you offload?
+
+373
+00:27:57,919 --> 00:28:05,679
+ Um so here we actually get to some pretty I'm sure none of you guys have taken an operating systems class but you should take your operating systems classes.
+
+374
+00:28:05,679 --> 00:28:09,039
+ Um you actually get to some pretty classic scheduling things.
+
+375
+00:28:09,029 --> 00:28:20,559
+ So this uh you could have this diagram except for like the GPU things on the right looks exactly like a operating systems diagram that you might have seen in the 70s or the 80s.
+
+376
+00:28:20,559 --> 00:28:31,360
+ Um because we used to have this problem where if you opened up too many applications on your computer uh you would run out of CPU memory and then you'd have to put those applications
+
+377
+00:28:31,360 --> 00:28:32,480
+ onto the disk.
+
+378
+00:28:32,480 --> 00:28:34,799
+ Um and it is exactly the same workload.
+
+379
+00:28:34,799 --> 00:28:46,320
+ Um so uh ideally so uh so here actually on the left side the nano banana hallucinated evictions for least recently used which is actually a pretty decent heristic.
+
+380
+00:28:46,310 --> 00:28:51,919
+ Um, there's probably some OS paper somewhere that says that LRU is within 2x of of what you can do.
+
+381
+00:28:51,919 --> 00:28:52,960
+ That's optimal.
+
+382
+00:28:52,960 --> 00:28:56,399
+ Of course, the best thing that you want to do is if you could predict the future,
+
+383
+00:28:56,399 --> 00:28:58,159
+ you would say you would know, oh,
+
+384
+00:28:58,159 --> 00:29:02,000
+ I'm about to have a request come in of a particular kind.
+
+385
+00:29:02,000 --> 00:29:04,159
+ Let me go prefetch that memory in.
+
+386
+00:29:04,159 --> 00:29:07,520
+ Um, it might actually be possible to predict the future.
+
+387
+00:29:07,520 --> 00:29:13,279
+ So, for example, when you go into your chat app and you bring up some old conversation from a month ago,
+
+388
+00:29:13,269 --> 00:29:16,960
+ that's a very strong signal that you're going to go start asking a question about it,
+
+389
+00:29:16,960 --> 00:29:21,679
+ you might then want to go load up that um load that up onto a GPU.
+
+390
+00:29:21,679 --> 00:29:23,520
+ But yeah, so in a perfect world,
+
+391
+00:29:23,520 --> 00:29:24,720
+ you predict the future.
+
+392
+00:29:24,720 --> 00:29:25,919
+ If you can't predict the future,
+
+393
+00:29:25,919 --> 00:29:27,360
+ use various heristics.
+
+394
+00:29:27,360 --> 00:29:36,559
+ Um and really, it's a question of uh how much traffic you want to put onto your GPU footprint.
+
+395
+00:29:36,559 --> 00:29:41,039
+ Um, I've never talked to anybody who wants to put less traffic onto their GPUs.
+
+396
+00:29:41,039 --> 00:29:48,799
+ Um, so yeah, I think modulo or subject to those SLAs's that we kind of splashed up at the at the beginning,
+
+397
+00:29:48,799 --> 00:29:54,159
+ um, you want to serve as much traffic as you can,
+
+398
+00:29:54,149 --> 00:29:54,799
+ right?
+
+399
+00:29:54,799 --> 00:29:57,120
+ Um, some fun things that are starting to happen.
+
+400
+00:29:57,120 --> 00:30:00,880
+ So uh in the last generation of Blackwell GPUs,
+
+401
+00:30:00,880 --> 00:30:07,039
+ Nvidia started putting together uh these new GPUs called NVL sendme 2 grace Blackwell chips.
+
+402
+00:30:07,039 --> 00:30:11,360
+ So these are 72 GPUs that are connected with really fast interconnect.
+
+403
+00:30:11,350 --> 00:30:18,320
+ Um and so you start to do things like uh how can I split my trillion parameter model across all 72 GPUs?
+
+404
+00:30:18,320 --> 00:30:19,760
+ Does this make any sense?
+
+405
+00:30:19,760 --> 00:30:21,440
+ Um what does it buy me?
+
+406
+00:30:21,440 --> 00:30:24,000
+ Um uh what what happens?
+
+407
+00:30:24,000 --> 00:30:26,320
+ How do I start to think about fault tolerance?
+
+408
+00:30:26,320 --> 00:30:30,559
+ So, um, these things can fail a lot for various different reasons.
+
+409
+00:30:30,559 --> 00:30:32,880
+ Uh, one reason is that the, uh,
+
+410
+00:30:32,880 --> 00:30:34,320
+ the connectors are kind of flimsy,
+
+411
+00:30:34,320 --> 00:30:36,399
+ like they're made of plastic, not made of metal.
+
+412
+00:30:36,399 --> 00:30:38,240
+ So, if you like jam the thing in too much,
+
+413
+00:30:38,240 --> 00:30:43,520
+ then, uh, then your cables are going to like bend the things a little bit and then you get really flaky envy links.
+
+414
+00:30:43,520 --> 00:30:47,520
+ Um, so, uh, which is a whole thing in itself,
+
+415
+00:30:47,520 --> 00:30:50,559
+ but what happens when, okay, so this is the AI generation.
+
+416
+00:30:50,559 --> 00:30:52,960
+ So, it's put a fan into the into the chips,
+
+417
+00:30:52,960 --> 00:30:54,720
+ which which doesn't quite make sense.
+
+418
+00:30:54,720 --> 00:30:58,880
+ Um, one of the things that you want to start thinking about is if I've taken a model,
+
+419
+00:30:58,880 --> 00:31:04,080
+ split it across 64 GPUs, I'm serving production traffic against millions of users,
+
+420
+00:31:04,080 --> 00:31:07,679
+ trillions of tokens, what do I do when a single GPU goes down?
+
+421
+00:31:07,679 --> 00:31:09,760
+ Um, is there some way to make that fall tolerant?
+
+422
+00:31:09,760 --> 00:31:13,679
+ And and there there's a lot of fun things to think about there.
+
+423
+00:31:13,669 --> 00:31:18,559
+ Um, and then of course, uh, you're starting to see these models have a million contexts or more.
+
+424
+00:31:18,559 --> 00:31:20,960
+ Um, how do you actually process it?
+
+425
+00:31:20,960 --> 00:31:24,080
+ Do you split that context across many different GPUs?
+
+426
+00:31:24,080 --> 00:31:29,120
+ um uh h how do you do these different things?
+
+427
+00:31:29,110 --> 00:31:40,880
+ Um so I want to dive uh ju just very briefly highlight one set of one example of an optimization that you can start to make when you start looking at this whole uh at this whole process
+
+428
+00:31:40,880 --> 00:31:43,039
+ from a systems level.
+
+429
+00:31:43,039 --> 00:31:50,960
+ So this is a a piece of work that we put out together um a few months ago called cache aware prefill decode disagregation.
+
+430
+00:31:50,960 --> 00:31:52,640
+ Um and it's a very simple optimization.
+
+431
+00:31:52,640 --> 00:31:57,760
+ and it's like two lines of code uh in the routing layer uhbut can actually make a pretty big difference.
+
+432
+00:31:57,760 --> 00:32:02,480
+ So the basic idea is uh you have all these requests that are coming in.
+
+433
+00:32:02,480 --> 00:32:10,320
+ Most of them are going to be turn based uh turnbyturn uh requests in a conversation where somebody's already started a conversation.
+
+434
+00:32:10,320 --> 00:32:15,760
+ Um but let's say your average conversation lasts 10 turns um and then the the user goes away.
+
+435
+00:32:15,760 --> 00:32:20,880
+ That suggests that okay 10% of your requests are going to be very fresh very new requests.
+
+436
+00:32:20,880 --> 00:32:24,960
+ So, when you have a new request that comes in that's going to be thousands of tokens,
+
+437
+00:32:24,960 --> 00:32:26,320
+ it's going to look very different.
+
+438
+00:32:26,320 --> 00:32:29,200
+ Um, it's going to be a lot more expensive to compute.
+
+439
+00:32:29,200 --> 00:32:36,880
+ You don't necessarily want to put that prefill against a short conversation that um where where you're halfway through a conversation.
+
+440
+00:32:36,880 --> 00:32:39,039
+ So, someone past in a book and says,
+
+441
+00:32:39,039 --> 00:32:40,559
+ "Hey, talk to me about this book."
+
+442
+00:32:40,559 --> 00:32:44,559
+ You don't want that running at the same time as someone who's midway through a conversation.
+
+443
+00:32:44,559 --> 00:32:50,159
+ Like, chat, explain to me um uh the why 1 plus 1 equals 2.
+
+444
+00:32:50,159 --> 00:32:54,559
+ um in chat is like 1 plus 1 equals two because numbers and whatnot and you're like oh I don't get it.
+
+445
+00:32:54,559 --> 00:33:06,320
+ You don't want that like very short uh question and answering to happen in the same time on the same GPUs as the very long um uh as the very long request.
+
+446
+00:33:06,320 --> 00:33:16,000
+ So you can put together this this really simple uh router that says okay if we have a new request that comes in that's a very low cache hit rate send it to one set of GPUs so that those
+
+447
+00:33:16,000 --> 00:33:22,960
+ can all um process things uh together and then send all my other warm requests to another set of prefill nodes.
+
+448
+00:33:22,960 --> 00:33:30,720
+ Turns out if you do this you can get up to 40% faster serving with these very simple um very very simple optimizations.
+
+449
+00:33:30,720 --> 00:33:32,399
+ So like that that's one set of things.
+
+450
+00:33:32,399 --> 00:33:39,919
+ I'd say the the way that I would characterize where we are in terms of uh the the research and these techniques is that we're very early.
+
+451
+00:33:39,919 --> 00:33:48,640
+ So um this is the type of thing that uh in 10 20 years they're going to look back on and be like oh why are these guys talking about this?
+
+452
+00:33:48,640 --> 00:33:50,799
+ Does isn't this already obvious to folks?
+
+453
+00:33:50,799 --> 00:34:03,760
+ Um uh but really it's because we're starting to see these things running them um at production in new ways seeing the these new bits of traffic um in uh in in new ways.
+
+454
+00:34:03,750 --> 00:34:04,080
+ All right.
+
+455
+00:34:04,080 --> 00:34:09,200
+ So so that was kind of a overview of the inference uh you know life of a kernel.
+
+456
+00:34:09,200 --> 00:34:18,000
+ Um now I'm gonna talk about two interesting research projects that are very much uh inspired by some of the things that we see when serving things at Ender.
+
+457
+00:34:18,000 --> 00:34:26,960
+ So this first one we're gonna be talking about uh language model language model decode and how you can make it go a lot faster with these things called mega kernels.
+
+458
+00:34:26,960 --> 00:34:32,159
+ Uh this is a collaboration between Stanford and together.
+
+459
+00:34:32,149 --> 00:34:34,480
+ So the fundamental challenge when you're running decode.
+
+460
+00:34:34,480 --> 00:34:39,359
+ So decode is the process by okay you've process your prompt and now you're generating one token at a time.
+
+461
+00:34:39,359 --> 00:34:46,480
+ The fundamental challenge is that um you have to run the whole model to generate a single token.
+
+462
+00:34:46,480 --> 00:34:57,520
+ Um so that means that instead of using all this big parallelism that you get with a GPU that you can do during prefill or training um you've now turned this massively parallel system
+
+463
+00:34:57,520 --> 00:35:03,200
+ um into basically a glorified memory loader.
+
+464
+00:35:03,190 --> 00:35:13,920
+ And one of the things that that makes this um extra challenging is that the way that we typically write down kernels and and run a model is that uh we will write down kernels and and
+
+465
+00:35:13,920 --> 00:35:16,480
+ program things one operation at a time.
+
+466
+00:35:16,480 --> 00:35:18,720
+ So you guys can probably understand why this is.
+
+467
+00:35:18,720 --> 00:35:21,440
+ So kernels tend to be pretty challenging to write.
+
+468
+00:35:21,440 --> 00:35:24,560
+ I'm sure you guys all had a lot of fun writing flash attention.
+
+469
+00:35:24,560 --> 00:35:35,040
+ Um but that means that typically what we do is we look at all the different operations in a um in a language model and we will run uh a we will write a single kernel for that operation
+
+470
+00:35:35,040 --> 00:35:36,800
+ at a time.
+
+471
+00:35:36,800 --> 00:35:50,480
+ So this makes things a lot easier uh to program because you just have to run your write your norm kernel or your map kernel or attention kernel but um you end up seeing uh it ends up
+
+472
+00:35:50,470 --> 00:35:53,440
+ introducing a lot of downtime into your system.
+
+473
+00:35:53,440 --> 00:35:59,760
+ Um, so this is a example of what it might look like when you're running inference across your kernel.
+
+474
+00:35:59,760 --> 00:36:08,720
+ So this is uh this is obviously a cartoon but the example is drawn from a a a particular attention inference kernel.
+
+475
+00:36:08,720 --> 00:36:12,079
+ Um, the way to read this is that on the x-axis you have time.
+
+476
+00:36:12,079 --> 00:36:14,160
+ So time is flowing from left to right.
+
+477
+00:36:14,160 --> 00:36:20,880
+ On the y-axis you have all the different little semi uh all the different little uh streaming multipprocessors on your GPU.
+
+478
+00:36:20,880 --> 00:36:24,000
+ So on a H100 there's 132 of these.
+
+479
+00:36:24,000 --> 00:36:27,200
+ On the B200 there's I think 148 etc.
+
+480
+00:36:27,200 --> 00:36:29,599
+ The bars indicate useful work.
+
+481
+00:36:29,599 --> 00:36:38,960
+ So when there's a bar here you have different um you have a one of the processors on the GPU is actually doing work and the empty space is just waiting.
+
+482
+00:36:38,960 --> 00:36:45,040
+ So you're just waiting for other operations to finish um so that you can have something else go on.
+
+483
+00:36:45,030 --> 00:36:53,920
+ And so basically uh you get into you get into this position where no matter how uh how well you try to write the kernel you're you're always going to have downtime in your GPU.
+
+484
+00:36:53,920 --> 00:36:55,599
+ So you're going to have things like kernel launch.
+
+485
+00:36:55,599 --> 00:37:01,119
+ So the kernel launch and kernel tearown that's these big uh gaps in in the red and the yellow.
+
+486
+00:37:01,119 --> 00:37:03,200
+ Uh you're going to have these things called tail effects.
+
+487
+00:37:03,200 --> 00:37:10,640
+ So this is just um the same way uh that if you have a short prompt that that gets processed with a very long prompt.
+
+488
+00:37:10,640 --> 00:37:13,680
+ This same thing goes all the way down to the basic attention operation.
+
+489
+00:37:13,680 --> 00:37:17,040
+ If you're processing a batch of inputs and one input is very short,
+
+490
+00:37:17,040 --> 00:37:22,000
+ one input is very long, you're going to be waiting for the very long input to finish.
+
+491
+00:37:21,990 --> 00:37:26,960
+ Um, and then because uh you're tearing you're running these across multiple kernels,
+
+492
+00:37:26,960 --> 00:37:32,320
+ uh, you will actually start to see these gaps between kernels start to add up.
+
+493
+00:37:32,310 --> 00:37:36,640
+ So, one thing that that we put together to try to solve this is this thing called a mega kernel.
+
+494
+00:37:36,640 --> 00:37:46,000
+ So this is basically saying um instead of treating each operation in the model as its own operation writing kernel for it instead let's write a single kernel to cover multiple operations
+
+495
+00:37:46,000 --> 00:37:46,800
+ at once.
+
+496
+00:37:46,800 --> 00:37:54,960
+ Uh this is similar to the fusion that you see in flash attention um except done more aggressively um across a larger number of things.
+
+497
+00:37:54,960 --> 00:38:06,079
+ And in particular what it does is it turns a GPU from a single uh device a single operation is you start thinking of the GPU as a massive distributed system and saying okay I have all
+
+498
+00:38:06,079 --> 00:38:07,760
+ this work that I need to get done.
+
+499
+00:38:07,760 --> 00:38:09,920
+ Some of it has dependencies on on other stuff.
+
+500
+00:38:09,920 --> 00:38:14,000
+ So that red stuff uh has some dependencies on some of the green bars.
+
+501
+00:38:14,000 --> 00:38:15,520
+ Um how can I schedule it?
+
+502
+00:38:15,520 --> 00:38:23,280
+ How can I distribute the work uh to maximize my GPU utilization?
+
+503
+00:38:23,270 --> 00:38:28,240
+ Uh if you do this just to the attention inference corner you get 30 to 70% speed ups.
+
+504
+00:38:28,240 --> 00:38:31,520
+ Um and then the nice thing is that you can actually do this to the whole model.
+
+505
+00:38:31,520 --> 00:38:35,119
+ Um so this is one layer of a llama 1B uh model.
+
+506
+00:38:35,119 --> 00:38:42,000
+ So here we've basically taken the entire uh the entire layer and put it together into one kernel.
+
+507
+00:38:42,000 --> 00:38:43,359
+ If you look at all these different bars,
+
+508
+00:38:43,359 --> 00:38:46,160
+ you see things are overlapped in in really weird ways.
+
+509
+00:38:46,160 --> 00:38:58,000
+ Uh that's because we we are now starting to overlap let's say a weight load from the next from the layer uh into the into the attention um or starting to run parts of reduction before
+
+510
+00:38:58,000 --> 00:39:02,960
+ before the attention operation is over.
+
+511
+00:39:02,950 --> 00:39:05,760
+ Um here here's one here's one interesting example.
+
+512
+00:39:05,760 --> 00:39:07,760
+ So uh here's one thing that you can do.
+
+513
+00:39:07,760 --> 00:39:14,000
+ So uh if you look at modern LMS you have the in the attention layer you have the QKV projections.
+
+514
+00:39:14,000 --> 00:39:16,160
+ you're gonna add some rope scaling to it.
+
+515
+00:39:16,160 --> 00:39:17,920
+ Um, so that's these blue blue lines.
+
+516
+00:39:17,920 --> 00:39:20,560
+ So those blue lines are QKV plus rope.
+
+517
+00:39:20,560 --> 00:39:22,160
+ Um, and then the orange lines,
+
+518
+00:39:22,160 --> 00:39:24,560
+ this is the beginning of the of the attention.
+
+519
+00:39:24,560 --> 00:39:33,280
+ So one of the insights is that uh you can start um loading in your KV cache into your attention before you're finished with QKV.
+
+520
+00:39:33,280 --> 00:39:35,599
+ Um, and particularly during decode,
+
+521
+00:39:35,599 --> 00:39:37,760
+ some of these orange bars with some of these circles,
+
+522
+00:39:37,760 --> 00:39:42,480
+ you start the KV cache load while the QKV plus rope is still running.
+
+523
+00:39:42,480 --> 00:39:45,599
+ And then once QKV is done, then you have your new query tokens,
+
+524
+00:39:45,599 --> 00:39:48,560
+ you can run the rest of the attention operation.
+
+525
+00:39:48,550 --> 00:39:53,599
+ So basically when you when you have these fine grained when you have this fine grain control of GPUs,
+
+526
+00:39:53,599 --> 00:39:58,480
+ you can start some operations before others are over.
+
+527
+00:39:58,470 --> 00:39:59,839
+ Here's another one.
+
+528
+00:39:59,839 --> 00:40:05,280
+ Um so here, so again, the orange is the the is the first part of the attention computation.
+
+529
+00:40:05,270 --> 00:40:08,400
+ The red is the O projection that comes after attention.
+
+530
+00:40:08,400 --> 00:40:15,520
+ Um and you have your O projection start loading the weights before your attention operation is over.
+
+531
+00:40:15,510 --> 00:40:28,400
+ Um we we put this together uh in a very in a relatively complex CUDA framework um with basically instruction an instruction based abstraction where we can implement each subkernel um
+
+532
+00:40:28,400 --> 00:40:40,160
+ in in its own file and then have a big virtualized shared memor memory system to uh to to orchestrate the the running of these operations.
+
+533
+00:40:40,150 --> 00:40:44,400
+ Um, and to to do this, we put together this library called Thunderkittens.
+
+534
+00:40:44,400 --> 00:40:49,040
+ Um, which is a uh a a one of these kernel writing libraries.
+
+535
+00:40:49,040 --> 00:40:52,400
+ You can think of it as almost like Triton except more low-level,
+
+536
+00:40:52,400 --> 00:40:56,800
+ a lot more fine grain control um over things.
+
+537
+00:40:56,790 --> 00:41:00,319
+ The payoff is you get near speed of life light decoding inference.
+
+538
+00:41:00,319 --> 00:41:03,040
+ Uh, so the these numbers are actually a lot better now.
+
+539
+00:41:03,040 --> 00:41:06,640
+ Um, but the the mega kernel is shown by this bar in teal.
+
+540
+00:41:06,640 --> 00:41:11,359
+ Um, and you can see it runs a lot faster than some of the other state-of-the-art engines.
+
+541
+00:41:11,349 --> 00:41:16,240
+ Uh, and on the H100, it's achieving 72% bandwidth utilization.
+
+542
+00:41:16,240 --> 00:41:18,800
+ Um, which is near the speed of light on the GPU.
+
+543
+00:41:18,800 --> 00:41:26,640
+ So, if you say, uh, if you just ignore all the complexities of what we're doing here and say how fast can the GPU physically go to do this operation,
+
+544
+00:41:26,640 --> 00:41:32,400
+ we are pretty close 72% of of that speed of light.
+
+545
+00:41:32,390 --> 00:41:42,000
+ So one interesting bit there is a takeaway from that section is that if you have very deep control of the kernels and the an understanding of the hardware can start to enable very 
+
+546
+00:41:42,000 --> 00:41:43,520
+different compute paradigms.
+
+547
+00:41:43,520 --> 00:41:50,960
+ Um and all these things you only see when you start playing with with inference at a deep level.
+
+548
+00:41:50,950 --> 00:41:51,280
+ Okay.
+
+549
+00:41:51,280 --> 00:41:54,079
+ Now I'll talk about um something that that's a little bit new.
+
+550
+00:41:54,079 --> 00:41:58,480
+ So this is uh now getting into the realm of new architectures.
+
+551
+00:41:58,480 --> 00:42:02,079
+ Um and we're gonna be I'm gonna be talking about this this new model called PERS.
+
+552
+00:42:02,079 --> 00:42:12,319
+ So this is uh some work that comes out of my UCSD lab um led by Hayden and then also in collaboration with these two folks um Zachary and Taylor.
+
+553
+00:42:12,309 --> 00:42:12,560
+ Okay.
+
+554
+00:42:12,560 --> 00:42:13,839
+ So I'm going to come back to this.
+
+555
+00:42:13,829 --> 00:42:21,359
+ So uh at the beginning of the talk I talked about hey all these new capabilities are coming because you're starting to scale these models and parameters and data.
+
+556
+00:42:21,359 --> 00:42:30,240
+ With parse we wanted to ask another question which is is this the only way you have to scale or is it potentially is there potentially something else some other way that you can get
+
+557
+00:42:30,240 --> 00:42:42,160
+ this this quality and with parse we wanted to this was basically our take on a technique called loop transformers where you take some blocks of your transformer and you run them in
+
+558
+00:42:42,160 --> 00:42:42,560
+ a loop.
+
+559
+00:42:42,560 --> 00:42:52,560
+ So instead of having your your tokens go um all like one layer at a time through the model at some point you say hey uh as you're going through just send it back through through that
+
+560
+00:42:52,560 --> 00:42:54,160
+ loop at at a time.
+
+561
+00:42:54,160 --> 00:42:57,359
+ Um there you're going to see there there's a couple different pieces here.
+
+562
+00:42:57,359 --> 00:43:03,839
+ So one is uh we use some state space model theory some SSM theory uh to kind of stabilize this operation.
+
+563
+00:43:03,839 --> 00:43:09,040
+ Naively if you just run this and and let the thing train uh we saw that the thing was going to blow up.
+
+564
+00:43:09,030 --> 00:43:18,480
+ Um and then the other thing is we started to see some interesting scaling laws that suggest that you want to be scaling the recurrence um of these recurrent models as you increase the
+
+565
+00:43:18,470 --> 00:43:19,119
+ data.
+
+566
+00:43:19,119 --> 00:43:24,880
+ Um so uh you uh in order to make the best use out of your parameters,
+
+567
+00:43:24,880 --> 00:43:28,640
+ you want to actually be reusing them somewhat.
+
+568
+00:43:28,630 --> 00:43:34,560
+ Um first I'll talk about a little bit of motivation of why we found this looping problem to be very interesting.
+
+569
+00:43:34,560 --> 00:43:40,800
+ Um so the basic idea is uh let's say you have some activation uh that's going through part of your model.
+
+570
+00:43:40,800 --> 00:43:48,480
+ At some point it hits the these looped blocks and it's just going to run the same activation is going to run through that same layer some number of times.
+
+571
+00:43:48,480 --> 00:43:51,119
+ So that that purple block is the recurrent block.
+
+572
+00:43:51,119 --> 00:43:55,599
+ Um and then at the end you you get the thing that comes back.
+
+573
+00:43:55,589 --> 00:43:58,000
+ So uh there are some advantages of this.
+
+574
+00:43:57,990 --> 00:44:02,160
+ So you can keep your parameters constant but it gives you a dial to increase your flops.
+
+575
+00:44:02,160 --> 00:44:11,760
+ Um so what when if you think that flops more flops equals higher quality this is a way to increase your quality without paying a higher parameter cost.
+
+576
+00:44:11,750 --> 00:44:21,760
+ Um another thing is there's this old work old is a relative term from a few years ago that suggests that you actually get higher explicricity there expressivity there are things that
+
+577
+00:44:21,760 --> 00:44:32,160
+ you uh that you can't um that you can't express with the same number number of parameters that you can't express with these looped models.
+
+578
+00:44:32,150 --> 00:44:36,319
+ Um, and one of our driving questions was what's the best quality per parameter?
+
+579
+00:44:36,309 --> 00:44:44,400
+ What's the best intelligence per parameter or intelligence per parameter in data that that these things will will allow you to do?
+
+580
+00:44:44,390 --> 00:44:46,800
+ Um, there were some promising initial results.
+
+581
+00:44:46,800 --> 00:44:52,240
+ So, this is a paper from Tom Goldstein's group at um in Maryland um that suggested,
+
+582
+00:44:52,240 --> 00:44:54,960
+ hey, this thing might be better than transformers.
+
+583
+00:44:54,960 --> 00:44:59,839
+ Um, you know, the these are some some some results on on the arc tasks.
+
+584
+00:44:59,839 --> 00:45:04,800
+ Um, and there's also a bunch of Twitter hype because about a week before we released Parse,
+
+585
+00:45:04,800 --> 00:45:09,599
+ uh, some dude from OpenAI said that Claude Mythos is a recurrent is a looped language model.
+
+586
+00:45:09,599 --> 00:45:10,960
+ Um, I don't think it's right.
+
+587
+00:45:10,960 --> 00:45:12,400
+ Uh, I think he was just making it up,
+
+588
+00:45:12,400 --> 00:45:16,319
+ but as a result, um, uh, it it really blew up um,
+
+589
+00:45:16,319 --> 00:45:19,520
+ in Twitter on on in speculation right before this.
+
+590
+00:45:19,520 --> 00:45:23,359
+ Um, eventually he had to write this blog post being like,
+
+591
+00:45:23,359 --> 00:45:24,079
+ "Hey, my bad.
+
+592
+00:45:24,079 --> 00:45:24,960
+ I just made that up.
+
+593
+00:45:24,960 --> 00:45:26,319
+ It's none of it's true."
+
+594
+00:45:26,309 --> 00:45:28,960
+ Um, but it was sufficiently interesting to go.
+
+595
+00:45:28,960 --> 00:45:31,680
+ So, we were working on it before before this Twitter hype.
+
+596
+00:45:31,680 --> 00:45:38,400
+ Um, but but I think they're they're there's something interesting something uh interesting to look at here.
+
+597
+00:45:38,390 --> 00:45:46,560
+ Now, one problem with these looped models is is if you looked at any of them and you tried to train them and then you changed anything about the training algorithm but at all.
+
+598
+00:45:46,560 --> 00:45:50,160
+ So, if you change the learning rate um by by a little bit,
+
+599
+00:45:50,160 --> 00:45:52,400
+ you'd suddenly start to see these models blow up.
+
+600
+00:45:52,400 --> 00:45:54,960
+ So if you did a simple thing like a learning rate sweep,
+
+601
+00:45:54,950 --> 00:45:59,359
+ you'd see nine times out of 10 this model just isn't isn't going to converge.
+
+602
+00:45:59,359 --> 00:46:00,160
+ It's going to blow up.
+
+603
+00:46:00,160 --> 00:46:00,960
+ You're going to get nans.
+
+604
+00:46:00,960 --> 00:46:02,720
+ You're going to get these big loss spikes.
+
+605
+00:46:02,720 --> 00:46:04,720
+ Um and so we were saying, hey,
+
+606
+00:46:04,720 --> 00:46:06,720
+ there seems to be something wrong with this.
+
+607
+00:46:06,720 --> 00:46:14,560
+ So if you're ever training a model and you're actually scaling it up and you see there are these big loss spikes that suggest something has gone very wrong with your training process,
+
+608
+00:46:14,560 --> 00:46:18,640
+ you should take a deeper look and and try to figure out what what happened.
+
+609
+00:46:18,640 --> 00:46:27,280
+ In previous work, there were some hacks like you can put norms in every layer to figure out what's happening or you know just pick two e the the learning rate of 2 e minus 4.
+
+610
+00:46:27,280 --> 00:46:29,359
+ Don't pick any of the the other learning rates.
+
+611
+00:46:29,359 --> 00:46:38,800
+ But we were thinking hey uh the existence of these lo spikes suggests that there's probably something um more uh deeper going on.
+
+612
+00:46:38,790 --> 00:46:46,800
+ Um and so we took a bit of a mathematical state space modelesque approach uh to the stabilization question.
+
+613
+00:46:46,790 --> 00:46:52,480
+ Um our basic insight was uh you can look at this process.
+
+614
+00:46:52,480 --> 00:47:02,240
+ Um so actually if you if you look at this process you try to think about try to how to analyze it an analytically it's going to be very complicated because this big RB block has tons
+
+615
+00:47:02,240 --> 00:47:09,760
+ of parameters there's all sorts of nonlinearities there's a softmax there's uh and rope and and all these other things.
+
+616
+00:47:09,760 --> 00:47:14,079
+ So um if you try to analyze it analytically it's quite complex.
+
+617
+00:47:14,079 --> 00:47:19,440
+ Our insight was we were just saying okay let's actually just look at the residual of this thing.
+
+618
+00:47:19,440 --> 00:47:23,760
+ Um so how is this activation changing from block to block?
+
+619
+00:47:23,760 --> 00:47:27,359
+ Um our first empirical observation was hey it actually doesn't change that much.
+
+620
+00:47:27,359 --> 00:47:38,160
+ So each of these residual blocks is not is maybe changing the vector a little bit but not really uh uh having a a massive impact.
+
+621
+00:47:38,150 --> 00:47:42,400
+ And as a result uh how can we so maybe we can actually model this.
+
+622
+00:47:42,400 --> 00:47:46,400
+ maybe we can actually um look look at what's happening more deeply.
+
+623
+00:47:46,390 --> 00:47:51,280
+ And so what we did is we went and wrote down a dynamic system over this residual.
+
+624
+00:47:51,280 --> 00:48:01,760
+ And when we did, we realized there's a couple pieces in here that uh when you look at the when you look at how you write down the model might look relatively um uh relatively benign
+
+625
+00:48:01,760 --> 00:48:04,160
+ but actually end up being being a huge bit.
+
+626
+00:48:04,160 --> 00:48:14,960
+ So what we did was we said okay there's all this nonlinear stuff there's this attention there's this uh gal there's this big feed forward network with the with the act with the uh uh
+
+627
+00:48:14,960 --> 00:48:25,440
+ intermediates and stuff um we're going to all put that into a box we're just going to call that r um and this r is going to be some big nonlinear thing um but we're going to uh we're
+
+628
+00:48:25,440 --> 00:48:32,800
+ going to we're going to put it just just stick it to the side what you're left with is um these a and b matrices.
+
+629
+00:48:32,800 --> 00:48:40,559
+ So this B matrix is some uh uh some transformation over your your initial uh your initial vector.
+
+630
+00:48:40,559 --> 00:48:43,920
+ So what is that first vector before you start the loop?
+
+631
+00:48:43,920 --> 00:48:50,720
+ And then this a vector is this a matrix is how do you transform that residual um in in each loop.
+
+632
+00:48:50,720 --> 00:48:59,599
+ And what we did is we said hey this this simple thing if you take all the complexity of the transformer and stick it to stick it to the side you have a relatively simple way of looking
+
+633
+00:48:59,599 --> 00:49:01,520
+ at all the previous loop transformers.
+
+634
+00:49:01,520 --> 00:49:06,000
+ Um and in in previous cases you do end up making some pretty normal decisions.
+
+635
+00:49:06,000 --> 00:49:13,359
+ So in in one case you just say oh uh the you you you just treat it as the as the identity you're just going to add things.
+
+636
+00:49:13,359 --> 00:49:17,280
+ In another case it's a fully learnable matrix.
+
+637
+00:49:17,270 --> 00:49:29,920
+ Um and then we said okay what happens if we just so the the resid we we observed empirically that these [music] a and b matrices are actually dominating uh the the magnitude of this
+
+638
+00:49:29,920 --> 00:49:31,040
+ equation.
+
+639
+00:49:31,040 --> 00:49:34,880
+ What happens if you just drop that complicated nonlinear piece?
+
+640
+00:49:34,880 --> 00:49:35,839
+ What do you get out?
+
+641
+00:49:35,839 --> 00:49:40,240
+ Well, you get out actually a pretty simple system that if you use high school calculus,
+
+642
+00:49:40,240 --> 00:49:44,319
+ you can just solve it to figure out what the answers are going to be.
+
+643
+00:49:44,319 --> 00:49:46,160
+ So, here's the closed form solution.
+
+644
+00:49:46,160 --> 00:49:52,559
+ Uh you can actually compute what is given what the initial activation is and what that um initial injection is.
+
+645
+00:49:52,559 --> 00:50:00,480
+ You can actually just uh empirically compute what what the activation is going to look like at time at step t plus one.
+
+646
+00:50:00,470 --> 00:50:02,000
+ And you notice a couple things.
+
+647
+00:50:02,000 --> 00:50:13,920
+ So this thing is dominated by uh these these a matrices and empir and and especially this a matrix that you are powering up to a large degree.
+
+648
+00:50:13,910 --> 00:50:20,880
+ Um and from here what we realize is that there's this quantity called the spectral radius of this a.
+
+649
+00:50:20,880 --> 00:50:24,240
+ So spectral radius is basically like another word for norm.
+
+650
+00:50:24,240 --> 00:50:32,000
+ Um one way that you can look at this is that uh uh you're taking this matrix you're powering it up to to huge amounts.
+
+651
+00:50:32,000 --> 00:50:43,520
+ Um if this matrix can learn to be something like let's say that this matrix uh you know if you go to scalers imagine that this matrix is two and then this t is like 16 or something.
+
+652
+00:50:43,520 --> 00:50:48,880
+ You've now taken this activation you've blown it up to 2 to the^ of 16 and it's and it's really big.
+
+653
+00:50:48,880 --> 00:50:52,160
+ Uh and this starts to explain some of those big loss spikes.
+
+654
+00:50:52,150 --> 00:51:02,720
+ Um and in particular what we found is that the choices that you make for these A and B matrices uh in that that people have made in these previous papers are either we call them marginally
+
+655
+00:51:02,720 --> 00:51:10,960
+ stable or unstable um uh unstable make the system unstable.
+
+656
+00:51:10,950 --> 00:51:20,400
+ And so with parse a we said okay well we figured out this thing where or if you if you take this particular look at it um and you let these A and B do whatever they want you're going
+
+657
+00:51:20,400 --> 00:51:22,000
+ to get things that really explode.
+
+658
+00:51:22,000 --> 00:51:27,359
+ What if we just constrain A and B such that uh if you run the math they're not not going to explode.
+
+659
+00:51:27,359 --> 00:51:34,240
+ So for A uh what we did is we said okay uh we're effectively going to make that A matrix a negative diagonal matrix.
+
+660
+00:51:34,240 --> 00:51:39,599
+ So if you um power that up you the term eventually goes to zero so it doesn't blow up.
+
+661
+00:51:39,599 --> 00:51:48,640
+ um this speed matrix we're going to put a stick a really simple linear norm against it um because the speed matrix actually only gets applied once and doesn't really blow up.
+
+662
+00:51:48,630 --> 00:51:51,119
+ If you compute the spectral radius is now going to be less than one.
+
+663
+00:51:51,119 --> 00:51:55,280
+ It's now actually going to be a stable system.
+
+664
+00:51:55,270 --> 00:52:00,319
+ Now if you go train this model what we saw uh is that you actually saw stable loss curve.
+
+665
+00:52:00,319 --> 00:52:05,040
+ So parse is this uh stabilized thing where we reparameterized a and b.
+
+666
+00:52:05,040 --> 00:52:10,960
+ You can see that even with this the 6E minus 4 learning rate that was so bad for for the other models,
+
+667
+00:52:10,960 --> 00:52:13,520
+ you actually got got a stable model at the end.
+
+668
+00:52:13,520 --> 00:52:21,359
+ Um and you see that with with doing this you can naturally constrain the the state norm of the of the activations.
+
+669
+00:52:21,359 --> 00:52:23,599
+ Um uh so two pieces here.
+
+670
+00:52:23,599 --> 00:52:26,800
+ So that orange baseline is just a completely unconstrained model.
+
+671
+00:52:26,790 --> 00:52:29,839
+ You can see it blows up goes to 10 to the 19th.
+
+672
+00:52:29,839 --> 00:52:36,880
+ This blue line is actually a um a model where uh where you are applying a norm to it.
+
+673
+00:52:36,880 --> 00:52:48,319
+ Um so what happens here is that the model is actually trying to expand the activations cuz um because it's saying oh with more room I can uh I can represent different things better.
+
+674
+00:52:48,319 --> 00:52:52,079
+ I can you know put these different concepts further away from each other or whatnot.
+
+675
+00:52:52,069 --> 00:52:56,160
+ Um and then you're applying norm to it to take that big thing that's trying to expand.
+
+676
+00:52:56,160 --> 00:52:58,960
+ Then you try to norm it back down to one.
+
+677
+00:52:58,960 --> 00:53:05,760
+ Um, and then you have this big uh the these two pressures that are kind of fighting against each other that manifest in loss spikes.
+
+678
+00:53:05,760 --> 00:53:08,240
+ So even though on the right your norms are very good,
+
+679
+00:53:08,230 --> 00:53:10,640
+ you're not seeing the activation actually blow up.
+
+680
+00:53:10,640 --> 00:53:15,920
+ Um, you do see that the loss uh can can do some pretty gnarly things.
+
+681
+00:53:15,910 --> 00:53:22,640
+ Um, so basically this this pretty simple change in the activations uh can stabilize the training,
+
+682
+00:53:22,640 --> 00:53:26,160
+ stabilize these recurrent loops.
+
+683
+00:53:26,150 --> 00:53:28,400
+ Uh so it's not only a more stable system,
+
+684
+00:53:28,400 --> 00:53:31,359
+ you actually also get more high higher quality models.
+
+685
+00:53:31,359 --> 00:53:40,559
+ Um so this is a uh this is a table where we are comparing parse models against uh a previous loop transformer called recurrent depth models.
+
+686
+00:53:40,559 --> 00:53:44,800
+ So you can see higher performance across a a variety of applications.
+
+687
+00:53:44,800 --> 00:53:51,359
+ Um so you see parse outperforms the previous loop models and also outperforms strong transformer baseline.
+
+688
+00:53:51,359 --> 00:53:58,559
+ So this transformer is like one of the nano chat ones where a bunch of people are trying to uh just get it to learn as fast as it can.
+
+689
+00:53:58,559 --> 00:54:09,920
+ Um and these parade models if you take that same basic transformer architecture start looping it um and then stabilize it you get uh better perplexities better um better end toend quality
+
+690
+00:54:09,920 --> 00:54:13,119
+ as well.
+
+691
+00:54:13,109 --> 00:54:17,599
+ And then one and then we started to run some very basic scaling laws here.
+
+692
+00:54:17,599 --> 00:54:20,880
+ Um and here our question was okay this is really really cute.
+
+693
+00:54:20,880 --> 00:54:23,200
+ uh you can do this looping thing to to make things better,
+
+694
+00:54:23,190 --> 00:54:31,920
+ but really should you like is there any evidence that that there's something here that that we want to be doing um uh looping more aggressively?
+
+695
+00:54:31,910 --> 00:54:34,400
+ Um so here I'll take a step back.
+
+696
+00:54:34,400 --> 00:54:44,800
+ Uh a few years ago there there's all this work on uh you know as we started to enter this this regime where you wanted to scale up all these models a natural question is should I make
+
+697
+00:54:44,800 --> 00:54:47,599
+ the models bigger or should I just train on more data?
+
+698
+00:54:47,599 --> 00:54:53,200
+ Um so a few years ago folks started to ask you know how should I scale these two quantities with each other?
+
+699
+00:54:53,200 --> 00:54:54,400
+ Should I scale model parameters?
+
+700
+00:54:54,390 --> 00:54:55,599
+ Should I scale data?
+
+701
+00:54:55,599 --> 00:55:01,680
+ Um and we came up with all these very complicated um power law curves uh that all look like this.
+
+702
+00:55:01,670 --> 00:55:02,400
+ They're very pretty.
+
+703
+00:55:02,400 --> 00:55:03,599
+ There's lots of colors.
+
+704
+00:55:03,599 --> 00:55:08,000
+ What you want to look out for is basically um uh sorry.
+
+705
+00:55:08,000 --> 00:55:11,599
+ What you want to look out for is if that curve is going down and to the right,
+
+706
+00:55:11,599 --> 00:55:16,079
+ it suggests you should be scaling both data and parameters at the same time.
+
+707
+00:55:16,079 --> 00:55:17,599
+ Um, if we were going straight down,
+
+708
+00:55:17,599 --> 00:55:20,720
+ that would mean uh, you know, just increase your training data.
+
+709
+00:55:20,720 --> 00:55:24,240
+ There's there's no there's no need to increase your parameters.
+
+710
+00:55:24,240 --> 00:55:26,800
+ If it's going, if it's flat, just going straight to the right,
+
+711
+00:55:26,800 --> 00:55:29,760
+ that means uh, you know, don't increase your data at all.
+
+712
+00:55:29,760 --> 00:55:31,119
+ Just increase your parameters.
+
+713
+00:55:31,119 --> 00:55:36,480
+ Um, but you see it's going down and to the right that means you should scale data and parameters at the same time.
+
+714
+00:55:36,480 --> 00:55:37,520
+ And now you see this, you know,
+
+715
+00:55:37,520 --> 00:55:41,359
+ you train a one trillion parameter model on 35 trillion tokens.
+
+716
+00:55:41,359 --> 00:55:44,319
+ Um, and you get better quality.
+
+717
+00:55:44,309 --> 00:55:54,240
+ So our question was okay where does recurrence fit into this and there are a couple right so down into the right means you want to scale data and prams there are a couple possibilities
+
+718
+00:55:54,240 --> 00:56:06,480
+ so uh with recurrence um and uh so for example you might conclude you should never run recurrence like it's better to just keep the same single recurrent model you might conclude uh
+
+719
+00:56:06,480 --> 00:56:17,119
+ you should do a ton of recurrence or maybe only some recurrence to the to to the bit um what we're showing here is at least in these initial scaling laws.
+
+720
+00:56:17,119 --> 00:56:21,760
+ Uh so all of these curves are isometric and isopram isoflop.
+
+721
+00:56:21,760 --> 00:56:24,079
+ So each of these curves is a model.
+
+722
+00:56:24,079 --> 00:56:27,280
+ So on the left and the right you have the same number of parameters.
+
+723
+00:56:27,280 --> 00:56:35,839
+ Um as you go down as you change the colors we are increasing the amount of flops I use to train to train to train the model by increasing the amount of data.
+
+724
+00:56:35,839 --> 00:56:40,799
+ So here we are varying data and varying the number of recurrences.
+
+725
+00:56:40,789 --> 00:56:45,280
+ What we find is that in both of these models you see this down into the right trend again.
+
+726
+00:56:45,280 --> 00:56:56,240
+ So what this is suggesting is that for these fixed parameter um training things uh as you increase the amount of data you should actually also be increasing the amount of recurrences
+
+727
+00:56:56,230 --> 00:57:00,079
+ um that that that you have.
+
+728
+00:57:00,069 --> 00:57:04,400
+ Uh we find that these recurrences follow some you know pretty classic power laws.
+
+729
+00:57:04,390 --> 00:57:14,480
+ Um so you can actually start to predict uh you can get these scaling laws to start to predict quality as you scale recurrences and your tokens jointly.
+
+730
+00:57:14,470 --> 00:57:18,400
+ >> Question for recurrence.
+
+731
+00:57:18,400 --> 00:57:18,720
+ Yeah.
+
+732
+00:57:18,720 --> 00:57:21,440
+ What about the jointly from the scaling?
+
+733
+00:57:21,430 --> 00:57:21,680
+ >> Yeah.
+
+734
+00:57:21,680 --> 00:57:36,480
+ So, we had this like really complex 3D figure that showed like like recurrences and data and parameters and it kind of like pointed also like whatever down and to the right and like
+
+735
+00:57:36,470 --> 00:57:38,640
+ down that way at the same time.
+
+736
+00:57:38,640 --> 00:57:41,920
+ Um, so like if you believe that figure,
+
+737
+00:57:41,920 --> 00:57:44,720
+ it suggests you should be scaling all three uh together.
+
+738
+00:57:44,720 --> 00:57:49,359
+ Yeah, but that figure was just really hard to look at because it was kind of like 3D and weird.
+
+739
+00:57:49,359 --> 00:57:56,480
+ Um but yeah so yeah the these power laws suggest when you're increasing data you should be increasing recurrence.
+
+740
+00:57:56,480 --> 00:58:02,240
+ Um and then you have other power laws that suggest when you're increasing data you should be increasing parameters.
+
+741
+00:58:02,240 --> 00:58:08,400
+ So um obviously you should increase well it suggests that you should increase all three of them if you can.
+
+742
+00:58:08,400 --> 00:58:15,200
+ Um, but one piece here is that if you're going to fix your model size and you're going to increase the amount of data,
+
+743
+00:58:15,200 --> 00:58:18,160
+ you should also be increasing the the recurrence,
+
+744
+00:58:18,150 --> 00:58:20,160
+ which is interesting because as far as I know,
+
+745
+00:58:20,160 --> 00:58:23,119
+ all of our models today have no recurrence in them.
+
+746
+00:58:23,119 --> 00:58:26,480
+ So, they're all kind of like at the very left of of these curves.
+
+747
+00:58:26,480 --> 00:58:28,720
+ Um, and they all have a ton of data,
+
+748
+00:58:28,720 --> 00:58:36,240
+ which suggests that there might be something slightly better that we could be doing uh when training these models,
+
+749
+00:58:36,230 --> 00:58:36,559
+ right?
+
+750
+00:58:36,559 --> 00:58:40,319
+ And here here's just that experiment um in in another way.
+
+751
+00:58:40,319 --> 00:58:46,720
+ So on the orange curve you have so here we fixed the uh the model size.
+
+752
+00:58:46,720 --> 00:58:50,000
+ The orange curve is a fixed depth model.
+
+753
+00:58:50,000 --> 00:58:52,240
+ So this is like a traditional transformer model.
+
+754
+00:58:52,230 --> 00:59:02,319
+ The blue curve is um uh when you fix the flop budget uh where do you hit on the curve uh for a for a looping model.
+
+755
+00:59:02,319 --> 00:59:09,839
+ Uh so here uh these the orange and blue dots have been trained with the same number of flops but a different amount of data.
+
+756
+00:59:09,839 --> 00:59:11,680
+ Um but they're the same size.
+
+757
+00:59:11,670 --> 00:59:18,400
+ When you get to that number of flops by increasing recurrences as well as and not just increasing data,
+
+758
+00:59:18,400 --> 00:59:20,880
+ you start to get smaller validation losses.
+
+759
+00:59:20,880 --> 00:59:30,640
+ Um which again suggests it might be the case that we should be looping all of our big uh all of our big pre-training runs.
+
+760
+00:59:30,630 --> 00:59:30,960
+ Yep.
+
+761
+00:59:30,960 --> 00:59:32,400
+ So, so that's parse.
+
+762
+00:59:32,400 --> 00:59:34,960
+ Um, if I want, if I take a little step back,
+
+763
+00:59:34,960 --> 00:59:38,880
+ um, and kind of go go back to to the big takeaway of the talk,
+
+764
+00:59:38,880 --> 00:59:44,559
+ um, I think hopefully I've given you a little sense today of if you understand the inference of these models,
+
+765
+00:59:44,559 --> 00:59:46,400
+ if you understand the GPU kernels,
+
+766
+00:59:46,400 --> 00:59:49,520
+ uh, you understand all the pieces um,
+
+767
+00:59:49,520 --> 00:59:54,480
+ that goes into it, you can really start to enable full stack innovation in machine learning algorithms.
+
+768
+00:59:54,480 --> 01:00:03,760
+ So whether that's through a new routing algorithm that lets you serve more more traffic or serve traffic in a different way or new kernels that allow you to run part of your system
+
+769
+01:00:03,760 --> 01:00:14,720
+ way faster or new architectures that say um you know if you have a lot fewer parameters you can fit them in a subset of your GPUs in a different way reduce the amount of communication.
+
+770
+01:00:14,720 --> 01:00:22,480
+ Um these are all different pieces of that of that question of the of that really research problem that that we're seeing today.
+
+771
+01:00:22,470 --> 01:00:30,960
+ Um, and yeah, hopefully uh I've inspired at least one of you in this room to to go take a deeper look at some of that.
+
+772
+01:00:30,950 --> 01:00:31,200
+ Yeah.
+
+773
+01:00:31,200 --> 01:00:32,319
+ So, with that, thanks.
+
+774
+01:00:32,319 --> 01:00:34,636
+ Happy to take a few questions.
+
+775
+01:00:34,636 --> 01:00:41,119
+ [applause] >> Okay, we have about five 10 minutes for questions.
+
+776
+01:00:41,119 --> 01:00:44,160
+ So, if you have a question, raise your hand.
+
+777
+01:00:44,150 --> 01:00:46,079
+ >> Yeah.
+
+778
+01:00:46,069 --> 01:00:50,720
+ For today, I guess like are you uh creating from scratch on the loot?
+
+779
+01:00:50,720 --> 01:00:55,440
+ I guess I was wondering if you could kind of take a matrix.
+
+780
+01:00:55,430 --> 01:00:55,680
+ >> Yeah.
+
+781
+01:00:55,680 --> 01:00:55,920
+ Yeah.
+
+782
+01:00:55,920 --> 01:00:56,319
+ So, yeah.
+
+783
+01:00:56,319 --> 01:00:57,920
+ So, yeah, great question.
+
+784
+01:00:57,920 --> 01:01:00,160
+ So, the question was with parse,
+
+785
+01:01:00,160 --> 01:01:01,680
+ are we training from scratch?
+
+786
+01:01:01,680 --> 01:01:04,079
+ Is there anything you can do with pre-trained models?
+
+787
+01:01:04,079 --> 01:01:09,440
+ Um, so there was a really troll blog post from someone a few months ago where he was like,
+
+788
+01:01:09,440 --> 01:01:13,839
+ hey, I won some like uh some leaderboard competition without training a single thing.
+
+789
+01:01:13,839 --> 01:01:25,119
+ what he did was he actually looped a like two or three layers in a quen model um by and just saw that on some math things it started having higher quality.
+
+790
+01:01:25,119 --> 01:01:29,440
+ Uh so we have a little bit of look work trying to look into this that may be coming out soon.
+
+791
+01:01:29,440 --> 01:01:36,319
+ Um but there there could be some models where if you do a little bit of looping just to the pre-trained model you can get a higher quality thing.
+
+792
+01:01:36,319 --> 01:01:38,319
+ Um which is really weird.
+
+793
+01:01:38,319 --> 01:01:42,559
+ Like it it kind of disturbs me like I don't know why why that would possibly be the case.
+
+794
+01:01:42,559 --> 01:01:44,559
+ Um, but yeah, we'll we'll be yeah,
+
+795
+01:01:44,559 --> 01:01:45,920
+ we're we're quite interested in this.
+
+796
+01:01:45,920 --> 01:01:50,160
+ I think we'll be looking at it and hopefully if I can convince Hayden,
+
+797
+01:01:50,160 --> 01:01:56,640
+ he'll be staring at the uh at the activations at the actual weights to figure out why when you loop it,
+
+798
+01:01:56,640 --> 01:01:58,480
+ it it gets better.
+
+799
+01:01:58,470 --> 01:01:59,920
+ >> Maybe just to follow up on that.
+
+800
+01:01:59,920 --> 01:02:03,680
+ So, you talked about computer optimality for the loop models.
+
+801
+01:02:03,680 --> 01:02:09,760
+ Can you speak about the inference implications and the memory and how that um can make you go faster?
+
+802
+01:02:09,750 --> 01:02:10,160
+ >> Yeah.
+
+803
+01:02:10,160 --> 01:02:19,440
+ So one of the reasons that I was personally very excited in uh these loops things is that uh one of the big bottlenecks to serving inference efficiently actually ends up being GPU 
+
+804
+01:02:19,440 --> 01:02:20,240
+memory.
+
+805
+01:02:20,240 --> 01:02:30,880
+ So if you have fewer parameters you can fit for example more KV cache um or you can uh do less communication because you need to split your model against fewer GPUs and things like
+
+806
+01:02:30,880 --> 01:02:31,520
+ that.
+
+807
+01:02:31,510 --> 01:02:36,559
+ So there's actually a lot of flexibility that a smaller model will will get you.
+
+808
+01:02:36,549 --> 01:02:41,119
+ Um, I also had this dream that if you could make the recurrent block small enough,
+
+809
+01:02:41,119 --> 01:02:46,960
+ um, you could actually write a little mega kernel to to just do that recurrent in a little very fast mega kernel loop.
+
+810
+01:02:46,960 --> 01:02:50,079
+ Um, so far we haven't been able to make those blocks small enough,
+
+811
+01:02:50,069 --> 01:02:52,559
+ but I think it's it's it's quite interesting.
+
+812
+01:02:52,559 --> 01:02:55,440
+ Um, certainly with the next generation of the LPU,
+
+813
+01:02:55,440 --> 01:02:57,920
+ the Grock chips are coming with Nvidia things,
+
+814
+01:02:57,920 --> 01:03:02,160
+ those are like those have like 250 megabytes of memory or something like that.
+
+815
+01:03:02,160 --> 01:03:05,760
+ So you the thing that you'll be able to fit into them is very very small.
+
+816
+01:03:05,760 --> 01:03:14,319
+ but maybe you can design something that will actually fit into them and then uh you can just keep your weights in memory the whole time and just run your activations through as quickly
+
+817
+01:03:14,319 --> 01:03:14,880
+ as you can.
+
+818
+01:03:14,880 --> 01:03:26,000
+ So there are kind of nonlinear benefits that you can get if you can cross some of these thresholds um that I'm hoping that that we'll be able to get to pretty soon.
+
+819
+01:03:25,990 --> 01:03:28,000
+ >> Yeah.
+
+820
+01:03:27,990 --> 01:03:42,400
+ talked about curious I guess the trade-offs are always like strictly optimal >> great great uh so the question is what are the trade-offs for micro kernels um the trade-offs are people's
+
+821
+01:03:42,400 --> 01:03:58,079
+ blood sweat and tears um so mega kernels turns out they're very very labor intensive to write um so uh to give you some some context I think a full talented kernel engineer Over the
+
+822
+01:03:58,079 --> 01:04:06,880
+ course of a year, we'll probably be able to write mega kernels for one hardware for two or three models for like batch sizes one to 16.
+
+823
+01:04:06,880 --> 01:04:08,799
+ You go batch size 17, you're like,
+
+824
+01:04:08,789 --> 01:04:09,760
+ nope, start over.
+
+825
+01:04:09,760 --> 01:04:11,039
+ Got got to go again.
+
+826
+01:04:11,029 --> 01:04:13,599
+ Um, so they're very very challenging to write and together.
+
+827
+01:04:13,599 --> 01:04:17,760
+ We're trying to put together some compilers that can automate some of that process.
+
+828
+01:04:17,760 --> 01:04:21,920
+ Um, but it's a very I'd say it's a very challenging thing to do.
+
+829
+01:04:21,920 --> 01:04:31,599
+ I think the basic mega kernel idea has become it's kind of you know gone in peaks and troughs over the last few decades when it comes to GPU programming.
+
+830
+01:04:31,599 --> 01:04:36,559
+ Um yeah so if you can do it it will go super fast you will never be able to go faster.
+
+831
+01:04:36,559 --> 01:04:44,559
+ Um but it just takes a lot of energy and a lot of lot of effort.
+
+832
+01:04:44,549 --> 01:04:45,200
+ >> Cool.
+
+833
+01:04:45,200 --> 01:04:47,119
+ Um maybe I can ask a question.
+
+834
+01:04:47,109 --> 01:04:47,520
+ Yeah.
+
+835
+01:04:47,510 --> 01:04:50,480
+ >> So can we talk a little bit more about uh code design?
+
+836
+01:04:50,480 --> 01:04:57,440
+ Um and >> in particular you mentioned all these new hardware like rock and cerebrus on the inference side.
+
+837
+01:04:57,440 --> 01:05:01,599
+ So if you're designing a model and you know that's going to be the serving platform.
+
+838
+01:05:01,599 --> 01:05:03,680
+ How should you be changing your architecture?
+
+839
+01:05:03,670 --> 01:05:04,319
+ >> Yeah.
+
+840
+01:05:04,319 --> 01:05:04,640
+ Yeah.
+
+841
+01:05:04,640 --> 01:05:07,599
+ I think there's there's a couple things that you should look at.
+
+842
+01:05:07,589 --> 01:05:12,079
+ So one is uh you are going to be most constrained by memory first.
+
+843
+01:05:12,079 --> 01:05:22,079
+ So if you know that you're going to be taking a model and serving it on a uh on a particular you know cerebra strip you want to go look at the cerebra wafer figure out how much memory
+
+844
+01:05:22,079 --> 01:05:28,480
+ you have um and then size your model so that it can fit there with enough KV cache or or whatever to to spare.
+
+845
+01:05:28,480 --> 01:05:38,880
+ Um if you look at carefully at the Chinese models that are coming out uh they've started making some interesting choices that suggest they might be starting to think about the Huawei
+
+846
+01:05:38,880 --> 01:05:40,799
+ chips that that are coming out.
+
+847
+01:05:40,799 --> 01:05:44,720
+ um you'll see uh quantization choices that people make.
+
+848
+01:05:44,720 --> 01:05:48,640
+ So if you have a model that you're intending to serve on Nvidia GPUs,
+
+849
+01:05:48,640 --> 01:05:51,839
+ for example, Nvidia's Neotron model that they released,
+
+850
+01:05:51,839 --> 01:05:54,480
+ uh you will train that model in NV FP4.
+
+851
+01:05:54,480 --> 01:05:58,480
+ This is a FP4 format that is proprietary to Nvidia chips.
+
+852
+01:05:58,480 --> 01:06:00,880
+ If you're not going to run it on on Nvidia chips,
+
+853
+01:06:00,880 --> 01:06:04,960
+ like if you're AMD, then you're going to run this other format called MX FP4.
+
+854
+01:06:04,960 --> 01:06:06,720
+ They each have their pros and cons.
+
+855
+01:06:06,720 --> 01:06:14,079
+ Um, but yeah, so you you'll make these these kind of subtle choices based on the hardware that you're choosing.
+
+856
+01:06:14,069 --> 01:06:17,359
+ >> I think there was a question over there >> for per se.
+
+857
+01:06:17,359 --> 01:06:21,440
+ I was wondering if it's ever if you just care about compute optimal training,
+
+858
+01:06:21,440 --> 01:06:29,039
+ is it ever optimal to boot as opposed to just having more parameters or is it mainly like a trick to reduce inference cost?
+
+859
+01:06:29,029 --> 01:06:29,359
+ >> Yeah.
+
+860
+01:06:29,359 --> 01:06:34,559
+ So I think that so the trick with compute optimal is it is usually like given a flop budget.
+
+861
+01:06:34,549 --> 01:06:35,200
+ >> Repeat the question.
+
+862
+01:06:35,190 --> 01:06:35,760
+ >> Oh yeah, sorry.
+
+863
+01:06:35,760 --> 01:06:36,000
+ Sorry.
+
+864
+01:06:36,000 --> 01:06:36,160
+ Yeah.
+
+865
+01:06:36,160 --> 01:06:41,359
+ The question was for parse uh would you ever choose to loop instead of increasing parameters?
+
+866
+01:06:41,359 --> 01:06:48,000
+ Um and so the trick with compute optimal is always like given some flop budget figure out what you want to hit.
+
+867
+01:06:48,000 --> 01:06:54,160
+ Uh it's almost a little bit contrived in that sense because if you want a higher quality model,
+
+868
+01:06:54,160 --> 01:06:58,319
+ you should just increase your flops budget and if you've decided on your model size,
+
+869
+01:06:58,319 --> 01:07:03,200
+ just train longer or um if you're restricted by your model size,
+
+870
+01:07:03,200 --> 01:07:06,240
+ uh then loop longer or if you have run out of data,
+
+871
+01:07:06,240 --> 01:07:13,839
+ then like pick the the model size that you think will be uh as overtrained as you as well trained as you can for for that size.
+
+872
+01:07:13,839 --> 01:07:22,799
+ Um, so I think there are choices and of course you make all these choices in the cont in the context of like do I think it'll get picked up?
+
+873
+01:07:22,799 --> 01:07:24,160
+ How am I going to serve it?
+
+874
+01:07:24,160 --> 01:07:30,960
+ Uh, if you're going to release open source like what what is the size of model that people can serve like on your laptop today?
+
+875
+01:07:30,960 --> 01:07:34,160
+ Um, so I think all these choices go into making a choice.
+
+876
+01:07:34,160 --> 01:07:38,640
+ All these things go into making a choice of how big a model you choose to train.
+
+877
+01:07:38,640 --> 01:07:42,559
+ Um I think like if you just make the model bigger and train it on more data,
+
+878
+01:07:42,559 --> 01:07:44,000
+ it's always going to get better.
+
+879
+01:07:44,000 --> 01:07:54,960
+ Um but uh yeah, so I think it really decide it depends on on those kind of design design points.
+
+880
+01:07:54,950 --> 01:07:57,200
+ >> Maybe another question about uh code design.
+
+881
+01:07:57,200 --> 01:08:05,280
+ So you mentioned at the beginning different use cases like aente coding versus let's say um batch processing of of data.
+
+882
+01:08:05,280 --> 01:08:16,560
+ So um what are the kind of the most dramatic differences in terms of optimal architectures that you see across different use cases right >> and I guess I mean at the end of the day
+
+883
+01:08:16,550 --> 01:08:23,120
+ of course model developers has to pick one >> and tries to not be be reasonable on >> many use cases.
+
+884
+01:08:23,110 --> 01:08:23,440
+ >> Yeah.
+
+885
+01:08:23,440 --> 01:08:24,239
+ Yeah.
+
+886
+01:08:24,239 --> 01:08:25,120
+ That's a great question.
+
+887
+01:08:25,120 --> 01:08:31,839
+ So I think um one of the big differences so when you have these agentic looped workflows,
+
+888
+01:08:31,839 --> 01:08:37,679
+ one of the things that matters a lot is that you want to keep uh your KV cache as hot as possible.
+
+889
+01:08:37,679 --> 01:08:42,960
+ So if you're doing a big batch processing thing where you only see each document once and then you translate it,
+
+890
+01:08:42,960 --> 01:08:46,719
+ the KV cache kind of doesn't uh necessarily matter as much.
+
+891
+01:08:46,719 --> 01:08:58,000
+ Um if you look at something like the deepseek MLA attention that is a radical compression of the KV cache compared to what you would have um for for another model um or if you have
+
+892
+01:08:58,000 --> 01:09:09,279
+ the model that can uh process it KV cache in FP8 or FP4 those are pretty big departures in terms of the size of the KV cache um that if you are sensitive to an agentic workflow you
+
+893
+01:09:09,269 --> 01:09:19,040
+ would look at um then of course there like the biggest one is like causal attention or non-causal attention right um so if you're is doing a big batch processing workflows like for
+
+894
+01:09:19,040 --> 01:09:29,199
+ the longest time Google was just using BERT models and I think probably still uses BERT models on search um and that's because uh you don't really need to be generating a bunch of tokens
+
+895
+01:09:29,199 --> 01:09:40,159
+ on the other end so you just do that big birectional attention once you get your vector out then you stick that in database do whatever you will with it um whereas uh you know the the
+
+896
+01:09:40,159 --> 01:09:46,159
+ the chat workflows those processing there's always going to be this this decode portion of it.
+
+897
+01:09:46,159 --> 01:09:59,840
+ Um I think there have been intermediate things like I know T5 uh was was at some point a a a choice that people made um to do some uh birectional processing and then also some generation.
+
+898
+01:09:59,830 --> 01:10:00,320
+ >> Okay.
+
+899
+01:10:00,320 --> 01:10:03,520
+ Uh maybe one last question.
+
+900
+01:10:03,520 --> 01:10:16,159
+ Oh yeah, my question just about it was about everything.
+
+901
+01:10:16,149 --> 01:10:26,320
+ I was just wondering like how does it cost?
+
+902
+01:10:26,310 --> 01:10:27,120
+ >> Yeah, great question.
+
+903
+01:10:27,120 --> 01:10:34,080
+ So the question is about how does mega kernel work when you have multiple uh GPUs communication in the loop.
+
+904
+01:10:34,080 --> 01:10:38,080
+ Um we had some very early preliminary work about this.
+
+905
+01:10:38,080 --> 01:10:44,080
+ So turns out you can also fuse the nickel calls into the mega kernel if you set it uh up correctly.
+
+906
+01:10:44,080 --> 01:10:47,920
+ Um I think we haven't found a really great killer use case for that yet.
+
+907
+01:10:47,920 --> 01:10:53,040
+ Um where uh sometimes you're just bound by the latency of the nickel call itself.
+
+908
+01:10:53,040 --> 01:10:55,920
+ Um so the these are also pieces of things that you can fuse.
+
+909
+01:10:55,920 --> 01:10:59,280
+ I think uh when Deepseek 4 came out,
+
+910
+01:10:59,280 --> 01:11:07,840
+ the Deepseek foes released a mega kernel for the mixture of experts inference layer um that you can run just for that where they actually did fuse some of those communication.
+
+911
+01:11:07,840 --> 01:11:14,320
+ Um so I think what what we are starting to see what you're starting to see more of is as you get to more of these models,
+
+912
+01:11:14,320 --> 01:11:18,719
+ you'll have a little mega kernel for a part of the for the part of the computation.
+
+913
+01:11:18,719 --> 01:11:21,920
+ Um but you won't necessarily have a mega kernel for the whole model.
+
+914
+01:11:21,920 --> 01:11:23,840
+ Um, unless of course you pay the blood,
+
+915
+01:11:23,840 --> 01:11:28,880
+ sweat, and tears price and then re really get really get the whole thing going.
+
+916
+01:11:28,870 --> 01:11:30,640
+ >> Okay, I think that's all the time we have.
+
+917
+01:11:30,640 --> 01:11:33,440
+ Let's thank Dan again.
+
+918
+01:11:33,430 --> 01:11:38,360
+ Thanks so much for having me.

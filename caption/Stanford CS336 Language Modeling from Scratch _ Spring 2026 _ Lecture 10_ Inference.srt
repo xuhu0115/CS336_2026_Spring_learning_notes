@@ -1,1 +1,6035 @@
-﻿
+﻿1
+00:00:05,320 --> 00:00:06,020
+All right.
+
+2
+00:00:06,020 --> 00:00:07,960
+Let's get started.
+
+3
+00:00:07,960 --> 00:00:11,300
+So last time, Tatsu talked about scaling laws,
+
+4
+00:00:11,300 --> 00:00:14,240
+and we're going to take a little break from that
+
+5
+00:00:14,240 --> 00:00:17,840
+and talk about an inference.
+
+6
+00:00:17,840 --> 00:00:21,760
+So the problem of inference is very simple.
+
+7
+00:00:21,760 --> 00:00:24,820
+You've trained a model, and you're given a prompt,
+
+8
+00:00:24,820 --> 00:00:27,480
+and you want to produce the response usually
+
+9
+00:00:27,480 --> 00:00:31,600
+as accurately and as quickly as you can.
+
+10
+00:00:31,600 --> 00:00:35,820
+So inference turns out to be only one lecture,
+
+11
+00:00:35,820 --> 00:00:39,640
+but it's actually of growing importance.
+
+12
+00:00:39,640 --> 00:00:42,680
+And it shows up in many places.
+
+13
+00:00:42,680 --> 00:00:44,580
+So clearly, once you've trained a model,
+
+14
+00:00:44,580 --> 00:00:45,980
+you don't just sit there.
+
+15
+00:00:45,980 --> 00:00:48,200
+And if you're a researcher, you put
+
+16
+00:00:48,200 --> 00:00:50,940
+a plot in your paper of here's how my model works,
+
+17
+00:00:50,940 --> 00:00:54,300
+but for everyone else, you actually want to use this model.
+
+18
+00:00:54,300 --> 00:00:56,120
+So what does use look like?
+
+19
+00:00:56,120 --> 00:00:59,830
+It could be chatting with an AI assistant or chatbot,
+
+20
+00:00:59,830 --> 00:01:02,670
+it could be doing code completion.
+
+21
+00:01:02,670 --> 00:01:04,950
+These days, agents are very popular,
+
+22
+00:01:04,950 --> 00:01:08,030
+and that requires inference.
+
+23
+00:01:08,030 --> 00:01:12,430
+Batch data processing as well.
+
+24
+00:01:12,430 --> 00:01:15,790
+It's also used for evaluation.
+
+25
+00:01:15,790 --> 00:01:19,670
+For evaluation that requires generation in particular.
+
+26
+00:01:19,670 --> 00:01:21,565
+And it's also used inside training.
+
+27
+00:01:21,565 --> 00:01:23,190
+If you're doing reinforcement learning,
+
+28
+00:01:23,190 --> 00:01:25,750
+you need to have a model, you generate rollouts,
+
+29
+00:01:25,750 --> 00:01:27,750
+and you score them, and you update the weights
+
+30
+00:01:27,750 --> 00:01:28,950
+appropriately.
+
+31
+00:01:28,950 --> 00:01:32,510
+So inference shows up all over the place.
+
+32
+00:01:32,510 --> 00:01:38,270
+And efficiency, as is the theme of this class,
+
+33
+00:01:38,270 --> 00:01:41,230
+really matters more than ever here.
+
+34
+00:01:41,230 --> 00:01:48,830
+And even if you just look at the actual use app of vantage point,
+
+35
+00:01:48,830 --> 00:01:50,550
+training is a one-time cost.
+
+36
+00:01:50,550 --> 00:01:51,690
+It could be very expensive.
+
+37
+00:01:51,690 --> 00:01:52,770
+It is very expensive.
+
+38
+00:01:52,770 --> 00:01:55,150
+But once you're done with it, that's it.
+
+39
+00:01:55,150 --> 00:01:57,900
+But inference is a repeated cost.
+
+40
+00:01:57,900 --> 00:02:01,660
+You kind of incur them every single day.
+
+41
+00:02:01,660 --> 00:02:05,340
+So OpenAI is estimated to produce
+
+42
+00:02:05,340 --> 00:02:09,060
+8.6 trillion tokens a day.
+
+43
+00:02:09,060 --> 00:02:11,980
+And just for reference, DeepSeek-V4,
+
+44
+00:02:11,980 --> 00:02:13,560
+which came out earlier this year,
+
+45
+00:02:13,560 --> 00:02:16,380
+was trained on 32 trillion tokens.
+
+46
+00:02:16,380 --> 00:02:19,060
+So in less than four days, the number of tokens
+
+47
+00:02:19,060 --> 00:02:22,380
+that OpenAI has to produce, and therefore the compute
+
+48
+00:02:22,380 --> 00:02:26,540
+is at least DeepSeek-V4.
+
+49
+00:02:26,540 --> 00:02:29,620
+And of course, even the frontier models
+
+50
+00:02:29,620 --> 00:02:31,900
+might be trained on more tokens, but still,
+
+51
+00:02:31,900 --> 00:02:37,500
+inference, the number of tokens generated is going to be higher.
+
+52
+00:02:37,500 --> 00:02:40,660
+So that's just some perspective.
+
+53
+00:02:40,660 --> 00:02:43,860
+And moreover, I think the importance of inference
+
+54
+00:02:43,860 --> 00:02:48,580
+has grown in the last year because once upon a time,
+
+55
+00:02:48,580 --> 00:02:50,980
+we thought of language models as primarily
+
+56
+00:02:50,980 --> 00:02:55,560
+as chatbots or assistants, where you put in a prompt,
+
+57
+00:02:55,560 --> 00:02:58,650
+you get back a response, and presumably,
+
+58
+00:02:58,650 --> 00:03:01,130
+the goal of the human is to read the response.
+
+59
+00:03:01,130 --> 00:03:04,850
+But now, as we move more into a genetic world,
+
+60
+00:03:04,850 --> 00:03:08,050
+what it looks like is that a query goes in,
+
+61
+00:03:08,050 --> 00:03:11,230
+and the agent is going to do a bunch of stuff.
+
+62
+00:03:11,230 --> 00:03:13,470
+It's going to think, it's going to reason,
+
+63
+00:03:13,470 --> 00:03:15,970
+it's going to call some tools, it's going to introspect.
+
+64
+00:03:15,970 --> 00:03:18,850
+And at the end of the day, it will produce some output
+
+65
+00:03:18,850 --> 00:03:20,970
+for a human to read.
+
+66
+00:03:20,970 --> 00:03:23,570
+So most of the tokens that the agent produces
+
+67
+00:03:23,570 --> 00:03:27,050
+is actually not for reading.
+
+68
+00:03:27,050 --> 00:03:29,210
+And so you should really think about the number
+
+69
+00:03:29,210 --> 00:03:32,490
+of tokens generated as really the compute spend.
+
+70
+00:03:32,490 --> 00:03:34,110
+And there's no limit.
+
+71
+00:03:34,110 --> 00:03:36,290
+If you have an ambitious enough problem,
+
+72
+00:03:36,290 --> 00:03:41,930
+you're going to need much compute and a lot of tokens.
+
+73
+00:03:41,930 --> 00:03:43,930
+So if you were in the chatbot world,
+
+74
+00:03:43,930 --> 00:03:47,390
+maybe inference after a certain point,
+
+75
+00:03:47,390 --> 00:03:51,450
+it's fast enough, because humans can only read so fast.
+
+76
+00:03:51,450 --> 00:03:56,590
+But for an agent, there's no limit to how much a value
+
+77
+00:03:56,590 --> 00:04:00,430
+you can get out of squeezing more out of inference.
+
+78
+00:04:00,430 --> 00:04:03,910
+So there's a lot of people doing inference
+
+79
+00:04:03,910 --> 00:04:06,310
+on the commercial side.
+
+80
+00:04:06,310 --> 00:04:08,830
+Of course, all the closed API providers
+
+81
+00:04:08,830 --> 00:04:11,070
+have to serve their models, so inference
+
+82
+00:04:11,070 --> 00:04:12,870
+is a big deal for them.
+
+83
+00:04:12,870 --> 00:04:15,550
+And there is also a bunch of providers
+
+84
+00:04:15,550 --> 00:04:20,149
+serving open weight models and providing inference as well.
+
+85
+00:04:20,149 --> 00:04:21,970
+And in the open source community,
+
+86
+00:04:21,970 --> 00:04:23,490
+there's a bunch of packages.
+
+87
+00:04:23,490 --> 00:04:25,670
+So VLM is probably a popular one.
+
+88
+00:04:25,670 --> 00:04:28,430
+Kind of a go-to.
+
+89
+00:04:28,430 --> 00:04:31,590
+SG Lang is another one that's particularly
+
+90
+00:04:31,590 --> 00:04:35,690
+good for agentic workloads, but maybe not as popular yet.
+
+91
+00:04:35,690 --> 00:04:39,770
+And then there's TensorRT from NVIDIA, which is really fast,
+
+92
+00:04:39,770 --> 00:04:42,190
+but it's more narrow.
+
+93
+00:04:42,190 --> 00:04:47,710
+And then Llama CPP, if you want to run inference on CPU,
+
+94
+00:04:47,710 --> 00:04:50,630
+this is a popular package.
+
+95
+00:04:50,630 --> 00:04:55,540
+So hopefully, I've argued that inference is huge.
+
+96
+00:04:55,540 --> 00:05:00,440
+If you can make inference twice as fast or even 10% faster,
+
+97
+00:05:00,440 --> 00:05:02,460
+that is a big deal.
+
+98
+00:05:02,460 --> 00:05:05,340
+So now, the question is, what does fast mean?
+
+99
+00:05:05,340 --> 00:05:08,400
+So there's a few metrics that capture the notion of fast.
+
+100
+00:05:08,400 --> 00:05:11,700
+And they're going to be applicable in different settings
+
+101
+00:05:11,700 --> 00:05:13,740
+and have different trade offs.
+
+102
+00:05:13,740 --> 00:05:19,580
+So one metric of fast is time to first token or TTFT.
+
+103
+00:05:19,580 --> 00:05:21,900
+This is essentially how long a user waits
+
+104
+00:05:21,900 --> 00:05:24,260
+before any generation happens.
+
+105
+00:05:24,260 --> 00:05:28,700
+So you put in a query into ChatGPT,
+
+106
+00:05:28,700 --> 00:05:36,740
+and some number of milliseconds passes by, and then
+
+107
+00:05:36,740 --> 00:05:40,820
+from the point the first token comes in, that is the time.
+
+108
+00:05:40,820 --> 00:05:43,540
+And this is generally useful for interactive applications
+
+109
+00:05:43,540 --> 00:05:46,900
+because that latency where you're just waiting and doing
+
+110
+00:05:46,900 --> 00:05:48,860
+nothing is--
+
+111
+00:05:48,860 --> 00:05:51,870
+the longer that is, the worse the user experience,
+
+112
+00:05:51,870 --> 00:05:54,210
+and as soon as tokens come in, it doesn't maybe
+
+113
+00:05:54,210 --> 00:05:57,690
+have to be that fast, because if you're going to read it anyway,
+
+114
+00:05:57,690 --> 00:06:00,530
+you can't read that fast.
+
+115
+00:06:00,530 --> 00:06:03,650
+So the second metric is latency.
+
+116
+00:06:03,650 --> 00:06:06,510
+And this is from the standpoint of an individual user.
+
+117
+00:06:06,510 --> 00:06:09,470
+How fast are tokens appearing for one query?
+
+118
+00:06:09,470 --> 00:06:14,330
+This is also important for interactive applications.
+
+119
+00:06:14,330 --> 00:06:17,370
+So basically, this is how fast the tokens are kind of streaming
+
+120
+00:06:17,370 --> 00:06:19,490
+through.
+
+121
+00:06:19,490 --> 00:06:21,170
+And then the second related concept
+
+122
+00:06:21,170 --> 00:06:24,570
+is throughput, measuring tokens per second,
+
+123
+00:06:24,570 --> 00:06:28,410
+this is how fast tokens are appearing for many queries.
+
+124
+00:06:28,410 --> 00:06:31,930
+So latency or one latency and throughput
+
+125
+00:06:31,930 --> 00:06:34,490
+are clearly very related.
+
+126
+00:06:34,490 --> 00:06:38,410
+It's very kind of aligned-- in general,
+
+127
+00:06:38,410 --> 00:06:42,250
+many interventions will make latency and throughput better.
+
+128
+00:06:42,250 --> 00:06:46,930
+But as we'll see later, there's actually a trade off here.
+
+129
+00:06:46,930 --> 00:06:49,360
+And throughput is useful for if you're doing
+
+130
+00:06:49,360 --> 00:06:52,080
+a bunch of batch processing.
+
+131
+00:06:52,080 --> 00:06:54,560
+You have a petabyte of data, and you
+
+132
+00:06:54,560 --> 00:06:57,000
+want to process it with a language model.
+
+133
+00:06:57,000 --> 00:06:59,100
+You just want that job to get done.
+
+134
+00:06:59,100 --> 00:07:03,240
+It doesn't matter if one query is coming in faster, sooner,
+
+135
+00:07:03,240 --> 00:07:04,960
+or later.
+
+136
+00:07:04,960 --> 00:07:06,600
+OK.
+
+137
+00:07:06,600 --> 00:07:09,360
+So what determines the efficiency
+
+138
+00:07:09,360 --> 00:07:14,280
+by either any of these metrics of inference.
+
+139
+00:07:14,280 --> 00:07:18,240
+So the high level bit is as follows.
+
+140
+00:07:18,240 --> 00:07:21,000
+And this is-- maybe one high level bit
+
+141
+00:07:21,000 --> 00:07:26,000
+to remember from the lecture is that when you're doing training,
+
+142
+00:07:26,000 --> 00:07:28,040
+you see all the tokens at once, because
+
+143
+00:07:28,040 --> 00:07:30,880
+in supervised fine-tuning, you see all the tokens,
+
+144
+00:07:30,880 --> 00:07:33,260
+and you can parallelize over the sequence.
+
+145
+00:07:33,260 --> 00:07:35,200
+Remember, think about in the transformer,
+
+146
+00:07:35,200 --> 00:07:38,360
+the calculation for attention, MLP,
+
+147
+00:07:38,360 --> 00:07:40,020
+the sequence is just a dimension.
+
+148
+00:07:40,020 --> 00:07:42,920
+So it's a big tensor that gets multiplied.
+
+149
+00:07:42,920 --> 00:07:47,150
+And so you, essentially, process all the tokens at once.
+
+150
+00:07:47,150 --> 00:07:50,030
+In inference, you can't do that.
+
+151
+00:07:50,030 --> 00:07:52,950
+You have to generate because of the autoregressive nature
+
+152
+00:07:52,950 --> 00:07:54,430
+of inference.
+
+153
+00:07:54,430 --> 00:07:55,450
+Tokens sequentially.
+
+154
+00:07:55,450 --> 00:07:56,910
+One at a time.
+
+155
+00:07:56,910 --> 00:07:59,790
+So this is the fundamental problem
+
+156
+00:07:59,790 --> 00:08:02,870
+of why inference is a very different workload
+
+157
+00:08:02,870 --> 00:08:05,870
+than training, because you can't parallelize across the sequence
+
+158
+00:08:05,870 --> 00:08:07,030
+dimension.
+
+159
+00:08:07,030 --> 00:08:08,850
+And therefore, as we'll see later,
+
+160
+00:08:08,850 --> 00:08:12,030
+it's going to be harder to have high arithmetic intensity
+
+161
+00:08:12,030 --> 00:08:15,710
+or fully utilize the compute.
+
+162
+00:08:15,710 --> 00:08:18,605
+OK.
+
+163
+00:08:18,605 --> 00:08:19,450
+All right.
+
+164
+00:08:19,450 --> 00:08:21,370
+So let's go on.
+
+165
+00:08:21,370 --> 00:08:24,710
+So first, I'm going to-- just maybe a preview of what's
+
+166
+00:08:24,710 --> 00:08:26,270
+in this lecture.
+
+167
+00:08:26,270 --> 00:08:31,670
+First, I'm going to do some math to understand the arithmetic
+
+168
+00:08:31,670 --> 00:08:34,850
+intensity and throughput and latency,
+
+169
+00:08:34,850 --> 00:08:37,549
+how to think about that for a transformer.
+
+170
+00:08:37,549 --> 00:08:40,110
+And then I'm going to talk about various techniques
+
+171
+00:08:40,110 --> 00:08:46,280
+to reduce the cost by making the kv cache smaller,
+
+172
+00:08:46,280 --> 00:08:48,900
+quantizing model pruning, and then
+
+173
+00:08:48,900 --> 00:08:51,260
+finally, I'll talk about speculative decoding, and then
+
+174
+00:08:51,260 --> 00:08:55,460
+some kind of practical concerns.
+
+175
+00:08:55,460 --> 00:08:56,000
+All right.
+
+176
+00:08:56,000 --> 00:08:58,917
+So this is going to be a bit of a review, mostly
+
+177
+00:08:58,917 --> 00:09:00,500
+kind of swapping in, making sure we're
+
+178
+00:09:00,500 --> 00:09:03,060
+on the same page with respect to notation.
+
+179
+00:09:03,060 --> 00:09:06,820
+Much of this lecture is based on the scaling book from Google
+
+180
+00:09:06,820 --> 00:09:09,480
+on transformers and inference.
+
+181
+00:09:09,480 --> 00:09:11,880
+So I do recommend that people go check it out.
+
+182
+00:09:11,880 --> 00:09:13,840
+It's a very nicely written.
+
+183
+00:09:13,840 --> 00:09:20,060
+And some of the figures are generously
+
+184
+00:09:20,060 --> 00:09:22,660
+lifted from that book.
+
+185
+00:09:22,660 --> 00:09:23,620
+OK.
+
+186
+00:09:23,620 --> 00:09:27,020
+So just to establish a bit of notation
+
+187
+00:09:27,020 --> 00:09:30,380
+to understand this diagram.
+
+188
+00:09:30,380 --> 00:09:33,460
+So we're going to use symbols.
+
+189
+00:09:33,460 --> 00:09:37,020
+Think about it in ienops to denote dimensions,
+
+190
+00:09:37,020 --> 00:09:38,640
+but also they're kind of length.
+
+191
+00:09:38,640 --> 00:09:41,540
+So B is going to be the batch dimension and also
+
+192
+00:09:41,540 --> 00:09:42,893
+the number of sequences.
+
+193
+00:09:42,893 --> 00:09:44,810
+T is going to be the sequence dimension, which
+
+194
+00:09:44,810 --> 00:09:46,230
+is also the number of tokens.
+
+195
+00:09:46,230 --> 00:09:49,770
+D is the model dimension, H is the dimension.
+
+196
+00:09:49,770 --> 00:09:53,210
+So if I'm going to write this, this
+
+197
+00:09:53,210 --> 00:09:57,930
+is taking a product between a tensor with dimensions B, T,
+
+198
+00:09:57,930 --> 00:10:03,850
+and D, and another matrix of D and H, and I produce BTH.
+
+199
+00:10:03,850 --> 00:10:06,050
+So what is going on here is that there
+
+200
+00:10:06,050 --> 00:10:08,490
+are some dimensions marked red, which
+
+201
+00:10:08,490 --> 00:10:10,290
+are going to be contracting.
+
+202
+00:10:10,290 --> 00:10:13,210
+These dimensions appear in both the operands
+
+203
+00:10:13,210 --> 00:10:16,370
+and disappear from the results.
+
+204
+00:10:16,370 --> 00:10:19,570
+And then there's going to be other regular dimensions
+
+205
+00:10:19,570 --> 00:10:25,690
+in black that appear only in one operand and stay in the result.
+
+206
+00:10:25,690 --> 00:10:28,050
+So this is the general form.
+
+207
+00:10:28,050 --> 00:10:31,730
+Another case is if you have blue dimensions, that
+
+208
+00:10:31,730 --> 00:10:33,890
+means they're attaching dimensions,
+
+209
+00:10:33,890 --> 00:10:36,630
+and they appear in both, but stay in the result.
+
+210
+00:10:36,630 --> 00:10:40,250
+They do not get contracted or reduced.
+
+211
+00:10:40,250 --> 00:10:40,750
+OK.
+
+212
+00:10:40,750 --> 00:10:43,220
+So the interpretation here, as we'll see later,
+
+213
+00:10:43,220 --> 00:10:46,560
+is that we have this tensor for every sequence
+
+214
+00:10:46,560 --> 00:10:47,540
+and token position.
+
+215
+00:10:47,540 --> 00:10:53,080
+You have a vector and you want to multiply that by a matrix.
+
+216
+00:10:53,080 --> 00:10:55,080
+And then here, you're basically taking
+
+217
+00:10:55,080 --> 00:10:58,900
+a bunch of dot products between two tensors.
+
+218
+00:10:58,900 --> 00:10:59,400
+OK.
+
+219
+00:10:59,400 --> 00:11:03,440
+So with that in mind, this in all its full glory,
+
+220
+00:11:03,440 --> 00:11:08,380
+is the description of a transformer block.
+
+221
+00:11:08,380 --> 00:11:10,380
+So it looks a little bit like a circuit diagram.
+
+222
+00:11:10,380 --> 00:11:12,640
+There's a lot of details here, but I actually
+
+223
+00:11:12,640 --> 00:11:17,600
+find this probably the most crisp definition
+
+224
+00:11:17,600 --> 00:11:19,480
+of what a transformer is.
+
+225
+00:11:19,480 --> 00:11:21,420
+You see a lot of description of transformer,
+
+226
+00:11:21,420 --> 00:11:24,200
+and frankly, a lot of them are-- it's
+
+227
+00:11:24,200 --> 00:11:26,762
+hard to understand what is exactly happening.
+
+228
+00:11:26,762 --> 00:11:28,720
+This one basically tells you exactly the shapes
+
+229
+00:11:28,720 --> 00:11:33,520
+of the tensors and allows you to reason about the dependency.
+
+230
+00:11:33,520 --> 00:11:35,960
+So for transformer block, you take
+
+231
+00:11:35,960 --> 00:11:39,300
+the X, which is the activations of one layer,
+
+232
+00:11:39,300 --> 00:11:41,100
+you feed it through a tension, and then
+
+233
+00:11:41,100 --> 00:11:44,020
+you feed it through MLP.
+
+234
+00:11:44,020 --> 00:11:50,860
+And just as a kind of a quick refresher,
+
+235
+00:11:50,860 --> 00:11:55,900
+you projected using a query matrix, a key matrix and a value
+
+236
+00:11:55,900 --> 00:12:02,820
+matrix, you'll see here that we have
+
+237
+00:12:02,820 --> 00:12:04,980
+N, which is the number of heads, and H
+
+238
+00:12:04,980 --> 00:12:06,700
+is the dimension of each head.
+
+239
+00:12:06,700 --> 00:12:10,740
+So the query matrix is batch times sequence times number
+
+240
+00:12:10,740 --> 00:12:13,060
+of heads times the head dimension,
+
+241
+00:12:13,060 --> 00:12:15,800
+and K and V, instead of having N,
+
+242
+00:12:15,800 --> 00:12:18,620
+we have K, which we'll see later,
+
+243
+00:12:18,620 --> 00:12:23,860
+which we have a potentially smaller number key value heads.
+
+244
+00:12:23,860 --> 00:12:26,820
+And then this is the attention operation,
+
+245
+00:12:26,820 --> 00:12:29,980
+where notice that there's batching dimensions.
+
+246
+00:12:29,980 --> 00:12:32,540
+So B appears in both.
+
+247
+00:12:32,540 --> 00:12:36,620
+And we're contracting over the head dimension.
+
+248
+00:12:36,620 --> 00:12:40,890
+And we'll come back to why this B, B in both,
+
+249
+00:12:40,890 --> 00:12:43,410
+makes inference hard.
+
+250
+00:12:43,410 --> 00:12:45,690
+Why attention is kind of a bottleneck there.
+
+251
+00:12:45,690 --> 00:12:49,610
+So just hold on to that thought.
+
+252
+00:12:49,610 --> 00:12:55,170
+And the MLP is very simple and straightforward.
+
+253
+00:12:55,170 --> 00:12:57,510
+You just do some math models.
+
+254
+00:12:57,510 --> 00:13:03,090
+This is the gating matrix.
+
+255
+00:13:03,090 --> 00:13:05,230
+This is the upper direction and a down projection.
+
+256
+00:13:05,230 --> 00:13:06,470
+So thank you guys.
+
+257
+00:13:06,470 --> 00:13:07,470
+I have implemented this.
+
+258
+00:13:07,470 --> 00:13:09,095
+So I don't want to belabor it, but just
+
+259
+00:13:09,095 --> 00:13:11,370
+to swap in the notation.
+
+260
+00:13:11,370 --> 00:13:18,050
+By convention, we're going to assume that in the MLP,
+
+261
+00:13:18,050 --> 00:13:22,450
+the MLP up projects the D dimensional, model dimension
+
+262
+00:13:22,450 --> 00:13:23,670
+into four times that.
+
+263
+00:13:23,670 --> 00:13:24,930
+So F is always--
+
+264
+00:13:24,930 --> 00:13:28,250
+think about it as 4D whenever you see F.
+
+265
+00:13:28,250 --> 00:13:32,150
+And then the model dimension gets split across the N heads.
+
+266
+00:13:32,150 --> 00:13:35,370
+So the model dimension is always equal to number of heads
+
+267
+00:13:35,370 --> 00:13:38,000
+times the head dimension.
+
+268
+00:13:38,000 --> 00:13:43,040
+And then the number of heads get split,
+
+269
+00:13:43,040 --> 00:13:45,640
+in the case of group query attention,
+
+270
+00:13:45,640 --> 00:13:51,920
+into the number of groups and the number of heads per group.
+
+271
+00:13:51,920 --> 00:13:54,760
+And finally, we have two variables, S and T,
+
+272
+00:13:54,760 --> 00:13:59,160
+which both represents the sequence dimension.
+
+273
+00:13:59,160 --> 00:14:01,080
+And the difference is that S is going
+
+274
+00:14:01,080 --> 00:14:05,520
+to represent the number of input tokens,
+
+275
+00:14:05,520 --> 00:14:08,680
+and T is going to represent the number of output tokens.
+
+276
+00:14:08,680 --> 00:14:10,720
+So in training time, these two are the same,
+
+277
+00:14:10,720 --> 00:14:15,560
+because we're predicting all the same inputs as outputs.
+
+278
+00:14:15,560 --> 00:14:18,000
+And inference time, T is going to be 1,
+
+279
+00:14:18,000 --> 00:14:19,660
+and S is going to be the input.
+
+280
+00:14:22,960 --> 00:14:23,960
+OK.
+
+281
+00:14:23,960 --> 00:14:26,380
+So another review for arithmetic intensity.
+
+282
+00:14:26,380 --> 00:14:28,520
+So I talked about this in the second lecture.
+
+283
+00:14:28,520 --> 00:14:29,520
+So just as a warm up.
+
+284
+00:14:29,520 --> 00:14:32,240
+Suppose I'm multiplying two matrices; a B by D
+
+285
+00:14:32,240 --> 00:14:34,600
+matrix and a D by F matrix.
+
+286
+00:14:34,600 --> 00:14:35,990
+So intuition.
+
+287
+00:14:35,990 --> 00:14:38,390
+B is the batch dimension, D is the hidden dimension
+
+288
+00:14:38,390 --> 00:14:41,310
+or the model dimension, and F is the projection dimension
+
+289
+00:14:41,310 --> 00:14:43,470
+in the MLP.
+
+290
+00:14:43,470 --> 00:14:47,030
+So remember, what are the arithmetic intensity?
+
+291
+00:14:47,030 --> 00:14:48,990
+I have to count flops, and I have
+
+292
+00:14:48,990 --> 00:14:52,630
+to count the amount of memory moved.
+
+293
+00:14:52,630 --> 00:14:56,150
+So we can do this as follows.
+
+294
+00:14:56,150 --> 00:15:01,110
+So what do you have to do to multiply these matrices?
+
+295
+00:15:01,110 --> 00:15:04,550
+Now, remember, the systems, lectures,
+
+296
+00:15:04,550 --> 00:15:08,550
+you have to read X from HBM.
+
+297
+00:15:08,550 --> 00:15:10,990
+And if you're storing everything in bf16,
+
+298
+00:15:10,990 --> 00:15:13,870
+which is the case for inference, we're
+
+299
+00:15:13,870 --> 00:15:17,630
+going to have 2 times B times D, you're going to read W. That's
+
+300
+00:15:17,630 --> 00:15:21,070
+going to be another 2 times D times F.
+
+301
+00:15:21,070 --> 00:15:22,450
+You're going to do the matmul.
+
+302
+00:15:22,450 --> 00:15:29,920
+So that's number of flops is 2 times B times D times F
+
+303
+00:15:29,920 --> 00:15:33,180
+And then you're going to write it back.
+
+304
+00:15:33,180 --> 00:15:33,860
+OK?
+
+305
+00:15:33,860 --> 00:15:36,160
+So every time you read and write,
+
+306
+00:15:36,160 --> 00:15:38,880
+it's basically the number of entries.
+
+307
+00:15:38,880 --> 00:15:42,920
+It's kind of a quadratic-like term, and matmuls are qubit.
+
+308
+00:15:42,920 --> 00:15:45,530
+And remember, this is going to be important
+
+309
+00:15:45,530 --> 00:15:47,780
+because that's how you're going to get high arithmetic
+
+310
+00:15:47,780 --> 00:15:48,900
+intensity.
+
+311
+00:15:48,900 --> 00:15:53,440
+So total number of flops is the cubic,
+
+312
+00:15:53,440 --> 00:15:57,780
+and then the bytes transferred is the sum of the reads
+
+313
+00:15:57,780 --> 00:15:59,980
+and writes.
+
+314
+00:15:59,980 --> 00:16:03,140
+So remember, arithmetic intensity is how much compute
+
+315
+00:16:03,140 --> 00:16:04,920
+we do per byte transfer.
+
+316
+00:16:04,920 --> 00:16:06,260
+And we want this to be high.
+
+317
+00:16:06,260 --> 00:16:13,020
+So the intensity is going to be equal to flops
+
+318
+00:16:13,020 --> 00:16:14,775
+over bytes transfer.
+
+319
+00:16:14,775 --> 00:16:16,900
+And I'm representing all these things symbolically,
+
+320
+00:16:16,900 --> 00:16:20,540
+because it will be easier to see and work
+
+321
+00:16:20,540 --> 00:16:23,780
+with rather than numbers.
+
+322
+00:16:23,780 --> 00:16:27,340
+One just simplification we can make
+
+323
+00:16:27,340 --> 00:16:29,820
+is that suppose that the batch dimension here
+
+324
+00:16:29,820 --> 00:16:34,730
+is much less than D and F, then we can simplify this.
+
+325
+00:16:34,730 --> 00:16:38,490
+So in particular, what this is doing is saying D equals C
+
+326
+00:16:38,490 --> 00:16:42,030
+times D and F equals C times B and let C goes to infinity,
+
+327
+00:16:42,030 --> 00:16:45,570
+so both D and F are really large and B is smaller,
+
+328
+00:16:45,570 --> 00:16:51,590
+and this just reduces to the intensity of B.
+
+329
+00:16:51,590 --> 00:16:55,330
+So the upshot of that is that remember
+
+330
+00:16:55,330 --> 00:16:59,490
+when we did arithmetic intensity for matmul,
+
+331
+00:16:59,490 --> 00:17:04,290
+it was something like N/3.
+
+332
+00:17:04,290 --> 00:17:07,130
+And this is the kind of analog, where
+
+333
+00:17:07,130 --> 00:17:12,430
+instead of just having square matrices,
+
+334
+00:17:12,430 --> 00:17:14,829
+we have non-square matrices.
+
+335
+00:17:14,829 --> 00:17:15,329
+OK.
+
+336
+00:17:15,329 --> 00:17:18,930
+So just to compare, so the accelerator intensity
+
+337
+00:17:18,930 --> 00:17:24,410
+of a hardware is you look at the flops per second
+
+338
+00:17:24,410 --> 00:17:28,490
+in the spec sheet, you look at how much memory bandwidth, how
+
+339
+00:17:28,490 --> 00:17:31,920
+fast memory gets moved between HBM, you divide,
+
+340
+00:17:31,920 --> 00:17:35,160
+and that is the accelerated intensity.
+
+341
+00:17:35,160 --> 00:17:40,240
+And now, you compare your computations intensity
+
+342
+00:17:40,240 --> 00:17:42,400
+with your accelerator intensity.
+
+343
+00:17:42,400 --> 00:17:47,540
+And if it's greater then your compute bound, which is good,
+
+344
+00:17:47,540 --> 00:17:50,480
+if you're less, then you're memory bound, and that's bad.
+
+345
+00:17:50,480 --> 00:17:54,920
+So in this case, for H100, for this particular matmul
+
+346
+00:17:54,920 --> 00:17:58,760
+operation, you're compute bound if the batch
+
+347
+00:17:58,760 --> 00:18:03,840
+size is greater than 295.
+
+348
+00:18:03,840 --> 00:18:06,000
+So here's an extreme case.
+
+349
+00:18:06,000 --> 00:18:11,160
+So suppose you just have one example.
+
+350
+00:18:11,160 --> 00:18:13,320
+What happens is you have one example, then
+
+351
+00:18:13,320 --> 00:18:16,320
+your arithmetic intensity is going to be one.
+
+352
+00:18:16,320 --> 00:18:21,040
+And this is going to be memory bound.
+
+353
+00:18:21,040 --> 00:18:23,420
+And you can see what's going on here.
+
+354
+00:18:23,420 --> 00:18:27,140
+You're reading this DF matrix, but B is only one.
+
+355
+00:18:27,140 --> 00:18:31,960
+So you're effectively doing only 2 times D times F flops.
+
+356
+00:18:34,690 --> 00:18:37,020
+And this is basically the workload
+
+357
+00:18:37,020 --> 00:18:38,720
+that you'll see in inference.
+
+358
+00:18:38,720 --> 00:18:40,400
+You don't get these full matrices,
+
+359
+00:18:40,400 --> 00:18:45,680
+you get these very thin matrices or tensors.
+
+360
+00:18:45,680 --> 00:18:46,180
+OK.
+
+361
+00:18:46,180 --> 00:18:50,100
+Let me stop there in case there's any questions.
+
+362
+00:18:50,100 --> 00:18:51,140
+Yeah.
+
+363
+00:18:51,140 --> 00:18:56,512
+In the transformer slide, I just want to confirm [INAUDIBLE].
+
+364
+00:19:03,409 --> 00:19:09,468
+You said, across [INAUDIBLE] can search across [INAUDIBLE]?
+
+365
+00:19:13,340 --> 00:19:17,960
+Yeah, should that be across tables instead of cubes?
+
+366
+00:19:22,180 --> 00:19:22,960
+Let's see.
+
+367
+00:19:22,960 --> 00:19:30,170
+So the number of groups here is--
+
+368
+00:19:30,170 --> 00:19:31,790
+wait, I'm just making sure.
+
+369
+00:19:31,790 --> 00:19:36,490
+So K is the number key value heads.
+
+370
+00:19:36,490 --> 00:19:45,150
+And so you have g per KV head.
+
+371
+00:19:54,255 --> 00:19:59,010
+[INAUDIBLE] correspond to it.
+
+372
+00:19:48,010 --> 00:19:54,255
+My understanding is [INAUDIBLE] each key path will have one
+
+373
+00:19:59,010 --> 00:20:06,450
+And [INAUDIBLE] then g is the number of [INAUDIBLE] p.
+
+374
+00:20:06,450 --> 00:20:08,290
+That means we have k.
+
+375
+00:20:08,290 --> 00:20:09,130
+That's my question.
+
+376
+00:20:09,130 --> 00:20:11,825
+Yeah, OK.
+
+377
+00:20:11,825 --> 00:20:12,950
+Yeah, I think you're right.
+
+378
+00:20:12,950 --> 00:20:15,810
+So k should be the number of groups,
+
+379
+00:20:15,810 --> 00:20:20,130
+and g should be the number of the heads per one
+
+380
+00:20:20,130 --> 00:20:21,230
+of those groups.
+
+381
+00:20:21,230 --> 00:20:21,730
+Yes.
+
+382
+00:20:21,730 --> 00:20:22,590
+Yeah, OK.
+
+383
+00:20:22,590 --> 00:20:23,310
+Thanks for that.
+
+384
+00:20:23,310 --> 00:20:24,270
+I'll fix that later.
+
+385
+00:20:27,920 --> 00:20:30,180
+OK.
+
+386
+00:20:30,180 --> 00:20:32,560
+So let's talk a little bit more about the arithmetic
+
+387
+00:20:32,560 --> 00:20:34,320
+intensity of inference.
+
+388
+00:20:34,320 --> 00:20:41,860
+So here's how to think about what's happening in inference.
+
+389
+00:20:41,860 --> 00:20:44,280
+Let's say you just do it naively.
+
+390
+00:20:44,280 --> 00:20:48,640
+So here is a prompt never going to give you.
+
+391
+00:20:48,640 --> 00:20:50,720
+I'm going to the transformer.
+
+392
+00:20:50,720 --> 00:20:55,360
+And the transformer does generates keys and values
+
+393
+00:20:55,360 --> 00:20:56,800
+and activations.
+
+394
+00:20:56,800 --> 00:21:00,000
+And at the end of the day, it generates logits
+
+395
+00:21:00,000 --> 00:21:02,720
+over the output vocabulary.
+
+396
+00:21:02,720 --> 00:21:06,760
+And you sample a token, and that token
+
+397
+00:21:06,760 --> 00:21:09,920
+gets concatenated with the prompt,
+
+398
+00:21:09,920 --> 00:21:11,860
+and then you just do this again.
+
+399
+00:21:11,860 --> 00:21:12,960
+You generate never.
+
+400
+00:21:12,960 --> 00:21:16,720
+You attach that to the prompt and so on and so forth.
+
+401
+00:21:16,720 --> 00:21:18,620
+So this is the most naive thing.
+
+402
+00:21:18,620 --> 00:21:21,920
+If you have a black box that takes a sequence
+
+403
+00:21:21,920 --> 00:21:24,110
+and outputs a distribution over tokens, which
+
+404
+00:21:24,110 --> 00:21:25,650
+is exactly what a transformer does,
+
+405
+00:21:25,650 --> 00:21:28,750
+you can just apply this repeatedly.
+
+406
+00:21:28,750 --> 00:21:36,190
+OK, so this works, but this is really bad because each time you
+
+407
+00:21:36,190 --> 00:21:40,150
+generate one token, you actually take
+
+408
+00:21:40,150 --> 00:21:43,270
+order T squared time where T is the number of tokens
+
+409
+00:21:43,270 --> 00:21:45,130
+that you've generated so far.
+
+410
+00:21:45,130 --> 00:21:52,590
+So generate T tokens is actually T cubed because the attention is
+
+411
+00:21:52,590 --> 00:22:00,910
+already T squared, and you have to do that once for every token.
+
+412
+00:22:00,910 --> 00:22:05,830
+So this is pretty bad, but the observation
+
+413
+00:22:05,830 --> 00:22:09,550
+is that you don't actually have to do this.
+
+414
+00:22:09,550 --> 00:22:12,610
+A lot of the work can actually be shared across prefixes.
+
+415
+00:22:12,610 --> 00:22:15,310
+So for example, if you're over generating network versus you're
+
+416
+00:22:15,310 --> 00:22:17,230
+generating up, you're actually computing
+
+417
+00:22:17,230 --> 00:22:24,020
+a lot of the same key values for never going to give.
+
+418
+00:22:24,020 --> 00:22:27,500
+So these tokens, they shouldn't change, OK?
+
+419
+00:22:27,500 --> 00:22:30,040
+And this is because it's a causal transformer.
+
+420
+00:22:30,040 --> 00:22:32,420
+If it was bidirectional, then if you attach a token,
+
+421
+00:22:32,420 --> 00:22:34,060
+then everything changes.
+
+422
+00:22:34,060 --> 00:22:36,340
+But if it's causal, then the activations
+
+423
+00:22:36,340 --> 00:22:41,980
+here don't change based on any tokens you append.
+
+424
+00:22:41,980 --> 00:22:45,740
+So with that observation, the first obvious thing
+
+425
+00:22:45,740 --> 00:22:50,500
+is to store a KV cache in HPM, so
+
+426
+00:22:50,500 --> 00:22:52,900
+that, between successive token generations,
+
+427
+00:22:52,900 --> 00:22:55,300
+you can just reuse the KV cache.
+
+428
+00:22:55,300 --> 00:23:02,100
+So that means when you are trying to generate gonna, you
+
+429
+00:23:02,100 --> 00:23:05,620
+don't actually have to compute all the keys and activations
+
+430
+00:23:05,620 --> 00:23:10,460
+of these previous tokens.
+
+431
+00:23:10,460 --> 00:23:12,680
+So this is what it looks like with a KV cache.
+
+432
+00:23:12,680 --> 00:23:16,640
+So there's going to be two stages pre-fill.
+
+433
+00:23:16,640 --> 00:23:21,010
+So you get the prompt, and you populate the KV cache, which
+
+434
+00:23:21,010 --> 00:23:25,930
+is the set key and value pairs that the transformer computes,
+
+435
+00:23:25,930 --> 00:23:27,750
+and then you generate the logit--
+
+436
+00:23:27,750 --> 00:23:30,330
+just the same computation as we did before.
+
+437
+00:23:30,330 --> 00:23:36,650
+And now you have the KV cache here and then this distribution
+
+438
+00:23:36,650 --> 00:23:38,570
+which you sample at a token.
+
+439
+00:23:38,570 --> 00:23:41,490
+And now you feed that through the transformer, which
+
+440
+00:23:41,490 --> 00:23:47,810
+uses this cache and then produces
+
+441
+00:23:47,810 --> 00:23:50,070
+both the distribution of the next tokens,
+
+442
+00:23:50,070 --> 00:23:54,090
+but a new KB, which is basically activations
+
+443
+00:23:54,090 --> 00:23:57,370
+corresponding to the token up.
+
+444
+00:23:57,370 --> 00:23:59,410
+And then this gets fed in.
+
+445
+00:23:59,410 --> 00:24:02,210
+So now you have the command to KV cache.
+
+446
+00:24:02,210 --> 00:24:05,890
+You have this logits you sample, and then that
+
+447
+00:24:05,890 --> 00:24:07,390
+feeds to the transformer.
+
+448
+00:24:07,390 --> 00:24:10,130
+You output the distribution over next tokens
+
+449
+00:24:10,130 --> 00:24:15,250
+as well as the new token which you add to the KB cache
+
+450
+00:24:15,250 --> 00:24:16,310
+and so on and so forth.
+
+451
+00:24:19,960 --> 00:24:24,420
+So the KV cache formula is for every sequence--
+
+452
+00:24:24,420 --> 00:24:25,620
+so there's B of them.
+
+453
+00:24:25,620 --> 00:24:28,520
+For every token, there's S of them.
+
+454
+00:24:28,520 --> 00:24:32,920
+And for every layer and every head,
+
+455
+00:24:32,920 --> 00:24:34,820
+you store H dimensional vector.
+
+456
+00:24:38,120 --> 00:24:41,480
+And just to reiterate for inference, there's prefill.
+
+457
+00:24:41,480 --> 00:24:42,860
+You given a prompt.
+
+458
+00:24:42,860 --> 00:24:48,860
+You encode the prompt into these vectors.
+
+459
+00:24:48,860 --> 00:24:51,000
+And this is parallelizable just like in training
+
+460
+00:24:51,000 --> 00:24:52,500
+because you see the entire prompt.
+
+461
+00:24:52,500 --> 00:24:55,240
+You can compute the KV cache.
+
+462
+00:24:55,240 --> 00:24:59,560
+And then in generation, you generate the new response tokens
+
+463
+00:24:59,560 --> 00:25:00,600
+sequentially.
+
+464
+00:25:00,600 --> 00:25:02,240
+But at least you don't have to pay
+
+465
+00:25:02,240 --> 00:25:05,160
+for generating the KV cache of the tokens
+
+466
+00:25:05,160 --> 00:25:08,200
+that you already looked at.
+
+467
+00:25:08,200 --> 00:25:11,300
+So is everyone comfortable with the KV cache?
+
+468
+00:25:11,300 --> 00:25:12,860
+Any questions about this?
+
+469
+00:25:22,020 --> 00:25:27,420
+All right, so let's try to figure out the FLOPs and memory
+
+470
+00:25:27,420 --> 00:25:32,100
+I/O for both MLP and attention layers.
+
+471
+00:25:32,100 --> 00:25:33,940
+So remember S is the number of tokens
+
+472
+00:25:33,940 --> 00:25:37,340
+we're kind of conditioning on, and T is the number of tokens
+
+473
+00:25:37,340 --> 00:25:39,260
+we're generating.
+
+474
+00:25:39,260 --> 00:25:41,120
+So we're going to do this abstractly.
+
+475
+00:25:41,120 --> 00:25:44,780
+And then later, we'll specify to the prefill where T equals S,
+
+476
+00:25:44,780 --> 00:25:48,740
+and generation T equals 1.
+
+477
+00:25:48,740 --> 00:25:51,140
+So for the MLP layers-- and through all of this,
+
+478
+00:25:51,140 --> 00:25:52,880
+I'm just going to look at the MAmmoTH
+
+479
+00:25:52,880 --> 00:25:55,140
+because the MAmmoTH are the thing that
+
+480
+00:25:55,140 --> 00:25:57,920
+actually require a lot of work.
+
+481
+00:25:57,920 --> 00:26:02,180
+Everything else can is not that many FLOPs
+
+482
+00:26:02,180 --> 00:26:06,760
+and can be potentially fused into the MAmmoTH too.
+
+483
+00:26:06,760 --> 00:26:07,260
+OK.
+
+484
+00:26:07,260 --> 00:26:09,440
+So let's do this calculation.
+
+485
+00:26:09,440 --> 00:26:12,000
+So it's the same as the matrix calculations.
+
+486
+00:26:12,000 --> 00:26:15,890
+I'm not going to maybe belabored step through every single detail
+
+487
+00:26:15,890 --> 00:26:19,610
+here, but just the form is you read X
+
+488
+00:26:19,610 --> 00:26:24,130
+from high bandwidth memory.
+
+489
+00:26:24,130 --> 00:26:27,570
+You read all the parameters.
+
+490
+00:26:27,570 --> 00:26:33,130
+You compute the upper projection,
+
+491
+00:26:33,130 --> 00:26:35,610
+and then you write it to HBM.
+
+492
+00:26:35,610 --> 00:26:42,850
+You compute the gate, and you write HBM,
+
+493
+00:26:42,850 --> 00:26:51,050
+and then you compute basically the down projection of that,
+
+494
+00:26:51,050 --> 00:26:53,970
+and you write it to HBM.
+
+495
+00:26:53,970 --> 00:26:59,690
+So the number of flops depends on B and T
+
+496
+00:26:59,690 --> 00:27:02,970
+and D and F. So batch size, sequence length,
+
+497
+00:27:02,970 --> 00:27:07,170
+model dimension, and the feedforward dimension,
+
+498
+00:27:07,170 --> 00:27:08,450
+MLP dimension.
+
+499
+00:27:08,450 --> 00:27:15,040
+And the bytes transferred is this expression.
+
+500
+00:27:15,040 --> 00:27:17,640
+So now you can compute the arithmetic intensity
+
+501
+00:27:17,640 --> 00:27:22,200
+which, again, is FLOPs divided by bytes transferred.
+
+502
+00:27:22,200 --> 00:27:24,400
+So this is some expression.
+
+503
+00:27:24,400 --> 00:27:27,440
+We're going to assume, that just like before, B times T
+
+504
+00:27:27,440 --> 00:27:33,720
+is much smaller than D and F. And with that, then we see
+
+505
+00:27:33,720 --> 00:27:38,840
+that intensity is B times T.
+
+506
+00:27:38,840 --> 00:27:41,900
+So this is analogous to just the MAmmoTH case.
+
+507
+00:27:41,900 --> 00:27:44,380
+There's more matrices and there's more dimensions,
+
+508
+00:27:44,380 --> 00:27:46,225
+but fundamentally it's the same thing.
+
+509
+00:27:46,225 --> 00:27:47,100
+And that makes sense.
+
+510
+00:27:47,100 --> 00:27:50,620
+An MLP is basically a big MAmmoTH.
+
+511
+00:27:50,620 --> 00:27:55,760
+And it also makes sense because the batch dimension
+
+512
+00:27:55,760 --> 00:27:59,660
+and the sequence length dimension are--
+
+513
+00:27:59,660 --> 00:28:01,840
+everything is independent.
+
+514
+00:28:01,840 --> 00:28:04,860
+And for the MLP, they don't interact.
+
+515
+00:28:04,860 --> 00:28:06,600
+Attention is different story.
+
+516
+00:28:06,600 --> 00:28:12,350
+And so B times T. So as long as you have--
+
+517
+00:28:12,350 --> 00:28:15,270
+in the pre-fill, if you make B times T
+
+518
+00:28:15,270 --> 00:28:19,030
+large enough-- large batches, long sequences-- you'll be fine.
+
+519
+00:28:19,030 --> 00:28:20,690
+Now, let's look at generation.
+
+520
+00:28:20,690 --> 00:28:24,430
+So remember, generation, there's two problems here.
+
+521
+00:28:24,430 --> 00:28:28,930
+One is that generation T equals 1.
+
+522
+00:28:28,930 --> 00:28:33,030
+You're only generating one token at a time.
+
+523
+00:28:33,030 --> 00:28:35,710
+And so that means your arithmetic intensity
+
+524
+00:28:35,710 --> 00:28:40,230
+is going to be B, but B in generation
+
+525
+00:28:40,230 --> 00:28:43,270
+is the number of concurrent requests.
+
+526
+00:28:43,270 --> 00:28:46,730
+And so if you're in a batch setting, you can control that.
+
+527
+00:28:46,730 --> 00:28:48,967
+But if you're, let's say, serving a chatbot,
+
+528
+00:28:48,967 --> 00:28:50,550
+it's the number of concurrent requests
+
+529
+00:28:50,550 --> 00:28:55,150
+is essentially how many users, concurrent users there are?
+
+530
+00:28:55,150 --> 00:28:56,170
+Which can be high.
+
+531
+00:28:56,170 --> 00:28:56,850
+It be low.
+
+532
+00:28:56,850 --> 00:28:58,330
+So it's a bit unpredictable.
+
+533
+00:28:58,330 --> 00:28:59,547
+It can be changing over time.
+
+534
+00:28:59,547 --> 00:29:01,630
+So that's something we're going to address when we
+
+535
+00:29:01,630 --> 00:29:06,630
+talk about continuous batching.
+
+536
+00:29:06,630 --> 00:29:10,980
+But overall, this is not bad because as long
+
+537
+00:29:10,980 --> 00:29:14,388
+as you have large batches, the sequence length
+
+538
+00:29:14,388 --> 00:29:15,680
+isn't going to really help you.
+
+539
+00:29:15,680 --> 00:29:18,860
+But if you have large batches, you should be good.
+
+540
+00:29:18,860 --> 00:29:22,460
+So now let's look at the attention layer.
+
+541
+00:29:22,460 --> 00:29:25,760
+So again, S is in the previous tokens already generated.
+
+542
+00:29:25,760 --> 00:29:29,900
+T is the number of tokens you want to generate logits for.
+
+543
+00:29:29,900 --> 00:29:40,500
+So in attention, you read the QKV matrices from HPM.
+
+544
+00:29:40,500 --> 00:29:43,580
+You compute the attention.
+
+545
+00:29:43,580 --> 00:29:47,380
+You compute the softmax which doesn't really matter,
+
+546
+00:29:47,380 --> 00:29:51,820
+and compute the value matrix, and then you
+
+547
+00:29:51,820 --> 00:29:54,460
+write the result to HBM.
+
+548
+00:29:54,460 --> 00:29:59,020
+So the FLOPs is B times S times T times D,
+
+549
+00:29:59,020 --> 00:30:04,420
+and the bytes transferred is this expression.
+
+550
+00:30:04,420 --> 00:30:07,830
+Everything's is a MAmmoTH, right?
+
+551
+00:30:07,830 --> 00:30:13,650
+So this should be always one degree higher of a polynomial
+
+552
+00:30:13,650 --> 00:30:17,450
+than the bytes transferred because it's a MAmmoTH.
+
+553
+00:30:17,450 --> 00:30:21,850
+The only question is, what is that factor look like?
+
+554
+00:30:21,850 --> 00:30:29,570
+So that factor for attention is S times T over S plus T.
+
+555
+00:30:29,570 --> 00:30:33,170
+So let's look at the prefill.
+
+556
+00:30:33,170 --> 00:30:37,210
+So prefill, what this is saying is
+
+557
+00:30:37,210 --> 00:30:41,970
+that the prefill intensity is S over 2 when T equals
+
+558
+00:30:41,970 --> 00:30:44,270
+S. So this is good, right?
+
+559
+00:30:44,270 --> 00:30:49,210
+Because as long as you have long sequence lengths for attention,
+
+560
+00:30:49,210 --> 00:30:54,890
+you're going to maintain high arithmetic intensity.
+
+561
+00:30:54,890 --> 00:30:58,190
+Notice that the batching dimension doesn't happen here.
+
+562
+00:30:58,190 --> 00:31:02,330
+I'll explain a bit why later.
+
+563
+00:31:02,330 --> 00:31:07,360
+But for generation, this is bad news.
+
+564
+00:31:07,360 --> 00:31:12,200
+So the generated nation intensity is S over S plus 1,
+
+565
+00:31:12,200 --> 00:31:16,960
+and that's less than 1, or even let's just call it 1.
+
+566
+00:31:16,960 --> 00:31:19,340
+And aromatic intensity, remember 1 is bad.
+
+567
+00:31:19,340 --> 00:31:22,120
+We want it to be something like 295 for H100
+
+568
+00:31:22,120 --> 00:31:24,520
+to be to saturate the compute.
+
+569
+00:31:24,520 --> 00:31:29,860
+And so this is really the bottleneck.
+
+570
+00:31:29,860 --> 00:31:35,680
+So we did all this analysis for MLP attention,
+
+571
+00:31:35,680 --> 00:31:39,640
+prefilled generation, and we've found this to be a bottleneck.
+
+572
+00:31:39,640 --> 00:31:46,400
+So let's try to contemplate why this is a bottleneck.
+
+573
+00:31:46,400 --> 00:31:50,800
+So unlike MLPs-- so MLP is for generation is actually OK
+
+574
+00:31:50,800 --> 00:31:52,760
+as long as your sequence is--
+
+575
+00:31:52,760 --> 00:31:59,080
+sorry, your batch is large enough.
+
+576
+00:31:59,080 --> 00:32:07,790
+So the problem with this ML attention is that--
+
+577
+00:32:07,790 --> 00:32:09,430
+let's look at MLPs.
+
+578
+00:32:09,430 --> 00:32:14,670
+Every sequence hits the same MLP weights.
+
+579
+00:32:14,670 --> 00:32:19,830
+So these don't depend on B. Whereas, in attention layer,
+
+580
+00:32:19,830 --> 00:32:23,390
+each sequence has its own KV cache.
+
+581
+00:32:23,390 --> 00:32:27,830
+So these all depend on MLP.
+
+582
+00:32:27,830 --> 00:32:36,230
+And so you can think about this as what's going on here
+
+583
+00:32:36,230 --> 00:32:43,070
+is that in the MLP case, having B being big actually
+
+584
+00:32:43,070 --> 00:32:48,510
+is helpful because you get to load these MLP weights once.
+
+585
+00:32:48,510 --> 00:32:52,230
+And you can use it for all your sequences.
+
+586
+00:32:52,230 --> 00:32:54,830
+That's how you get high arithmetic intensity
+
+587
+00:32:54,830 --> 00:32:56,630
+because you use it--
+
+588
+00:32:56,630 --> 00:32:58,510
+simplifying a bit, you load it once.
+
+589
+00:32:58,510 --> 00:32:59,990
+You do all your batch processing,
+
+590
+00:32:59,990 --> 00:33:02,790
+and then that is good.
+
+591
+00:33:02,790 --> 00:33:09,010
+Whereas, in attention, all these depend on B. So increasing B
+
+592
+00:33:09,010 --> 00:33:09,950
+doesn't help.
+
+593
+00:33:09,950 --> 00:33:12,810
+It's like for every sequence, you're
+
+594
+00:33:12,810 --> 00:33:15,490
+basically doing a MAmmoTH.
+
+595
+00:33:15,490 --> 00:33:17,430
+So they're all independent.
+
+596
+00:33:17,430 --> 00:33:21,890
+So doing more MAmmoTHs isn't helpful.
+
+597
+00:33:21,890 --> 00:33:24,750
+Just if you remember in the very beginning,
+
+598
+00:33:24,750 --> 00:33:27,250
+I showed you this example.
+
+599
+00:33:27,250 --> 00:33:31,270
+This also has pretty bad arithmetic intensity.
+
+600
+00:33:31,270 --> 00:33:33,490
+It's not a MAmmoTH because we're essentially
+
+601
+00:33:33,490 --> 00:33:37,130
+batching by a coordinate.
+
+602
+00:33:37,130 --> 00:33:39,210
+And this is essentially basically the same
+
+603
+00:33:39,210 --> 00:33:43,370
+as doing a dot product, which has horrible arithmetic
+
+604
+00:33:43,370 --> 00:33:44,210
+intensity.
+
+605
+00:33:44,210 --> 00:33:46,430
+And remember, this is in the attention.
+
+606
+00:33:46,430 --> 00:33:52,210
+This blue B is the cause of why the attention is
+
+607
+00:33:52,210 --> 00:33:54,410
+arithmetic intensity doesn't scale with B,
+
+608
+00:33:54,410 --> 00:33:58,290
+and why that is a bottleneck.
+
+609
+00:33:58,290 --> 00:34:00,170
+So just to summarize here.
+
+610
+00:34:00,170 --> 00:34:02,260
+So prefill is compute-bound.
+
+611
+00:34:02,260 --> 00:34:04,640
+Generation is memory-bound.
+
+612
+00:34:04,640 --> 00:34:10,560
+So if you look at the MLP intensity for prefill,
+
+613
+00:34:10,560 --> 00:34:12,480
+it's B times S, great.
+
+614
+00:34:12,480 --> 00:34:18,040
+Prefill for attention, intensity S over 2--
+
+615
+00:34:18,040 --> 00:34:20,400
+not as good, but workable.
+
+616
+00:34:20,400 --> 00:34:24,040
+Generation MLP intensity, also workable,
+
+617
+00:34:24,040 --> 00:34:26,679
+requires long concurrent requests.
+
+618
+00:34:26,679 --> 00:34:29,920
+But it is really the generation attention
+
+619
+00:34:29,920 --> 00:34:36,880
+intensity which is a fundamental bottleneck, and that's it.
+
+620
+00:34:36,880 --> 00:34:38,659
+If you're sticking with a transformer,
+
+621
+00:34:38,659 --> 00:34:43,639
+you can't really improve this.
+
+622
+00:34:43,639 --> 00:34:44,880
+OK.
+
+623
+00:34:44,880 --> 00:34:46,860
+Pause there for questions.
+
+624
+00:34:57,560 --> 00:35:00,550
+So now whenever you hear people say, oh, inference
+
+625
+00:35:00,550 --> 00:35:03,510
+is memory bound, you know why.
+
+626
+00:35:07,070 --> 00:35:07,750
+OK.
+
+627
+00:35:07,750 --> 00:35:13,270
+So let's now use these intuitions and calculations
+
+628
+00:35:13,270 --> 00:35:17,550
+to think about our inference metrics
+
+629
+00:35:17,550 --> 00:35:21,230
+throughput and latency and also TFRT.
+
+630
+00:35:21,230 --> 00:35:21,730
+All right.
+
+631
+00:35:21,730 --> 00:35:24,410
+So inference is memory bound.
+
+632
+00:35:27,310 --> 00:35:30,110
+Now the main-- I mean, in some ways
+
+633
+00:35:30,110 --> 00:35:32,310
+this simplifies a lot of things because when
+
+634
+00:35:32,310 --> 00:35:34,150
+we think about how long things take,
+
+635
+00:35:34,150 --> 00:35:38,590
+you just look at how much memory needs to be transferred, OK?
+
+636
+00:35:38,590 --> 00:35:44,230
+Because assuming you overlap communication and computation,
+
+637
+00:35:44,230 --> 00:35:47,630
+the bottleneck is going to be just the amount of memory
+
+638
+00:35:47,630 --> 00:35:49,470
+that you have to deal with.
+
+639
+00:35:49,470 --> 00:35:52,170
+So in some ways, it's nice because it's simpler.
+
+640
+00:35:52,170 --> 00:35:54,710
+But in other ways, it's frustrating
+
+641
+00:35:54,710 --> 00:35:57,260
+that your accelerators are sitting there not
+
+642
+00:35:57,260 --> 00:35:58,080
+doing anything.
+
+643
+00:36:00,660 --> 00:36:04,240
+So let's walk through an example.
+
+644
+00:36:04,240 --> 00:36:09,460
+So for Llama 2.13B on an H100.
+
+645
+00:36:09,460 --> 00:36:12,500
+So what is the latency and the throughput?
+
+646
+00:36:12,500 --> 00:36:16,960
+So remember Llama 2.13B has a particular shape.
+
+647
+00:36:16,960 --> 00:36:21,060
+So this is a sequence length, the model dimension,
+
+648
+00:36:21,060 --> 00:36:25,560
+feedforward dimension, number of query, number key value heads.
+
+649
+00:36:25,560 --> 00:36:26,760
+There's no GQA here.
+
+650
+00:36:26,760 --> 00:36:29,700
+So the N equals k, head dimension,
+
+651
+00:36:29,700 --> 00:36:34,500
+number of layers of vocab size, and the memory bandwidth
+
+652
+00:36:34,500 --> 00:36:41,820
+for H100.
+
+653
+00:36:41,820 --> 00:36:46,740
+So now, using this config, let's compute
+
+654
+00:36:46,740 --> 00:36:50,960
+the transformer performance statistics, OK?
+
+655
+00:36:50,960 --> 00:36:55,450
+So these are our inputs here.
+
+656
+00:36:55,450 --> 00:36:58,930
+And just the statistics I'm going to compute
+
+657
+00:36:58,930 --> 00:37:05,570
+are going to be number of parameters, the memory, usage
+
+658
+00:37:05,570 --> 00:37:07,810
+latency, and throughput.
+
+659
+00:37:07,810 --> 00:37:16,290
+So first of all, what takes memory?
+
+660
+00:37:16,290 --> 00:37:18,610
+So the parameters take memory.
+
+661
+00:37:18,610 --> 00:37:23,170
+So we compute the number of parameters.
+
+662
+00:37:23,170 --> 00:37:29,930
+And so you look at the embeddings, the MLP layers,
+
+663
+00:37:29,930 --> 00:37:34,010
+the projections of the KQV.
+
+664
+00:37:34,010 --> 00:37:39,450
+At the end of the day, you get some number of parameters.
+
+665
+00:37:39,450 --> 00:37:44,370
+Assuming that we're doing a bf16, which is always
+
+666
+00:37:44,370 --> 00:37:46,490
+the case for inference, then parameters
+
+667
+00:37:46,490 --> 00:37:49,330
+take up this many bytes.
+
+668
+00:37:49,330 --> 00:37:53,280
+Also in memory is the KV cache.
+
+669
+00:37:53,280 --> 00:37:58,800
+And the KV cache is the number of tokens in your sequence
+
+670
+00:37:58,800 --> 00:38:07,200
+times the number of heads and the KV heads times the head
+
+671
+00:38:07,200 --> 00:38:09,200
+dimension times the number of layers.
+
+672
+00:38:09,200 --> 00:38:12,780
+You have one for the key and one for the value,
+
+673
+00:38:12,780 --> 00:38:16,580
+and then you have multiple two for bf16.
+
+674
+00:38:16,580 --> 00:38:18,960
+So that's the size of the KV cache.
+
+675
+00:38:18,960 --> 00:38:21,720
+And the total memory usage is--
+
+676
+00:38:21,720 --> 00:38:24,740
+this is for each sequence you have B sequences.
+
+677
+00:38:24,740 --> 00:38:28,120
+So that's B times that plus the parameter size.
+
+678
+00:38:28,120 --> 00:38:32,000
+And that's the amount of memory you need.
+
+679
+00:38:32,000 --> 00:38:34,300
+And now, what's the latency?
+
+680
+00:38:34,300 --> 00:38:41,520
+The latency is determined by the memory I/O, OK?
+
+681
+00:38:41,520 --> 00:38:46,160
+Because inference is memory-bound, most assuming you
+
+682
+00:38:46,160 --> 00:38:49,720
+overlap communication and compute.
+
+683
+00:38:49,720 --> 00:38:56,510
+All the memory, it's going to be on shuffling parameters back
+
+684
+00:38:56,510 --> 00:39:01,670
+and forth between HPM and SRAM.
+
+685
+00:39:01,670 --> 00:39:06,870
+So that's how long it takes to move memory around.
+
+686
+00:39:06,870 --> 00:39:09,690
+Throughput is the inverse of latency,
+
+687
+00:39:09,690 --> 00:39:12,210
+but we're generating B tokens in parallel.
+
+688
+00:39:12,210 --> 00:39:16,170
+So this is tokens per second.
+
+689
+00:39:16,170 --> 00:39:17,290
+This is seconds per token.
+
+690
+00:39:17,290 --> 00:39:19,830
+This is tokens per second, as well as
+
+691
+00:39:19,830 --> 00:39:27,290
+having an additional B because you're processing a batch of B.
+
+692
+00:39:27,290 --> 00:39:31,870
+So now, let's compute for this config what
+
+693
+00:39:31,870 --> 00:39:33,590
+are these actual values?
+
+694
+00:39:33,590 --> 00:39:39,390
+So num parameters is 13 billion.
+
+695
+00:39:39,390 --> 00:39:42,510
+So a good sanity check-- that is advertised as a 13 billion
+
+696
+00:39:42,510 --> 00:39:44,390
+parameter model.
+
+697
+00:39:44,390 --> 00:39:53,090
+Memory is this term, which is about 838 million times B.
+
+698
+00:39:53,090 --> 00:39:55,650
+So it's basically a linear function
+
+699
+00:39:55,650 --> 00:39:58,510
+of B plus some other term.
+
+700
+00:39:58,510 --> 00:40:00,570
+So this is a KV cache which grows
+
+701
+00:40:00,570 --> 00:40:02,930
+as B. This is the parameters, which
+
+702
+00:40:02,930 --> 00:40:06,370
+is double the number of params.
+
+703
+00:40:06,370 --> 00:40:10,630
+Now, latency is just this scale by the memory bandwidth,
+
+704
+00:40:10,630 --> 00:40:15,050
+so it has the same form as the memory.
+
+705
+00:40:15,050 --> 00:40:17,430
+And throughput is B over that.
+
+706
+00:40:20,850 --> 00:40:24,610
+So notice that latency, as you increase B,
+
+707
+00:40:24,610 --> 00:40:28,630
+grows because the KV cache grows.
+
+708
+00:40:28,630 --> 00:40:30,090
+And in order to process stuff, you
+
+709
+00:40:30,090 --> 00:40:33,450
+have to copy the KV cache back and forth.
+
+710
+00:40:33,450 --> 00:40:35,930
+And now, throughput is more interesting
+
+711
+00:40:35,930 --> 00:40:39,250
+because, as you increase B, throughput
+
+712
+00:40:39,250 --> 00:40:45,250
+does improve but up to a limit.
+
+713
+00:40:45,250 --> 00:40:47,530
+Throughput improves because now you're
+
+714
+00:40:47,530 --> 00:40:50,760
+amortizing the cost over a larger batch.
+
+715
+00:40:50,760 --> 00:40:54,280
+But also, the speed at which you're processing this obviously
+
+716
+00:40:54,280 --> 00:40:58,480
+is also increasing over time.
+
+717
+00:40:58,480 --> 00:41:00,720
+So this asymptotes.
+
+718
+00:41:00,720 --> 00:41:01,600
+It's not going to--
+
+719
+00:41:01,600 --> 00:41:03,980
+throughput can't possibly go to infinity.
+
+720
+00:41:06,600 --> 00:41:10,820
+Any questions about this so far?
+
+721
+00:41:14,360 --> 00:41:16,720
+So basically, you just have to remember
+
+722
+00:41:16,720 --> 00:41:21,320
+latency is a linear function in B. This is where the constant is
+
+723
+00:41:21,320 --> 00:41:22,880
+the size of KV cache, and then this
+
+724
+00:41:22,880 --> 00:41:24,160
+is the number of parameters.
+
+725
+00:41:24,160 --> 00:41:30,720
+And then throughput is some proportional to B over B
+
+726
+00:41:30,720 --> 00:41:31,820
+plus something.
+
+727
+00:41:35,040 --> 00:41:40,140
+So now, let's instantiate this for a bunch of situations, OK?
+
+728
+00:41:40,140 --> 00:41:46,280
+So if you have batch size 1, so this is what you would get.
+
+729
+00:41:46,280 --> 00:41:55,470
+You get a latency of 0.008 seconds per token.
+
+730
+00:41:55,470 --> 00:41:59,110
+And the throughput is 124 tokens per second.
+
+731
+00:41:59,110 --> 00:42:02,070
+So what happens if you increase the batch size,
+
+732
+00:42:02,070 --> 00:42:07,470
+you'll see that the latency goes up,
+
+733
+00:42:07,470 --> 00:42:09,330
+but the throughput also goes up.
+
+734
+00:42:09,330 --> 00:42:13,070
+So latency gets worse, but the throughput improves.
+
+735
+00:42:13,070 --> 00:42:16,710
+So this is an interesting thing because we think about, oh, we
+
+736
+00:42:16,710 --> 00:42:18,370
+just want to make it go fast.
+
+737
+00:42:18,370 --> 00:42:19,910
+But fast actually has two meanings
+
+738
+00:42:19,910 --> 00:42:22,870
+here, which actually, depending on which one you care about,
+
+739
+00:42:22,870 --> 00:42:24,610
+is completely opposite.
+
+740
+00:42:24,610 --> 00:42:27,110
+If you want to tune your batch size,
+
+741
+00:42:27,110 --> 00:42:30,670
+that's going to really determine if you
+
+742
+00:42:30,670 --> 00:42:33,630
+want latency or throughput.
+
+743
+00:42:33,630 --> 00:42:36,710
+And what happens if you increase-- let's say, increase--
+
+744
+00:42:36,710 --> 00:42:38,790
+we really want high throughput because we're
+
+745
+00:42:38,790 --> 00:42:40,410
+processing lots of documents.
+
+746
+00:42:40,410 --> 00:42:42,970
+Let's increase the batch size even more, OK?
+
+747
+00:42:42,970 --> 00:42:45,620
+So the latency gets even worse.
+
+748
+00:42:45,620 --> 00:42:47,380
+I mean, yeah, it gets worse.
+
+749
+00:42:47,380 --> 00:42:49,580
+Throughput gets even better.
+
+750
+00:42:49,580 --> 00:42:53,900
+But the main problem here is that your memory, you run out
+
+751
+00:42:53,900 --> 00:42:59,660
+of memory because the memory, for storing this KV cache,
+
+752
+00:42:59,660 --> 00:43:03,820
+is going to exceed your H100 memory.
+
+753
+00:43:03,820 --> 00:43:06,440
+And if you have B200s, you can increase the batch size more,
+
+754
+00:43:06,440 --> 00:43:09,180
+but eventually you hit some of limit.
+
+755
+00:43:09,180 --> 00:43:11,780
+So there's limitations to how much
+
+756
+00:43:11,780 --> 00:43:13,320
+you can increase your throughput.
+
+757
+00:43:13,320 --> 00:43:15,980
+You'll never get to the asymptote
+
+758
+00:43:15,980 --> 00:43:20,700
+because you'll hit the memory.
+
+759
+00:43:20,700 --> 00:43:24,940
+And also, your throughput is getting--
+
+760
+00:43:24,940 --> 00:43:27,400
+your gains are kind of diminishing as well.
+
+761
+00:43:30,780 --> 00:43:34,780
+So increasing batch size worsens the latency
+
+762
+00:43:34,780 --> 00:43:40,260
+because now you have a larger KV cache to read and write.
+
+763
+00:43:40,260 --> 00:43:41,980
+And remember, it's batched.
+
+764
+00:43:41,980 --> 00:43:43,750
+So if you're an individual query,
+
+765
+00:43:43,750 --> 00:43:45,490
+you have to wait for everyone to finish.
+
+766
+00:43:45,490 --> 00:43:48,650
+So you have to basically-- you're waiting for a bus,
+
+767
+00:43:48,650 --> 00:43:51,050
+and the latency is pretty high.
+
+768
+00:43:51,050 --> 00:43:54,170
+You wait and then you go.
+
+769
+00:43:54,170 --> 00:43:56,210
+Whereas, the throughput of a bus is pretty good
+
+770
+00:43:56,210 --> 00:43:59,930
+because you can move everyone at once.
+
+771
+00:43:59,930 --> 00:44:04,190
+So the throughput improves as batch size increases
+
+772
+00:44:04,190 --> 00:44:08,190
+because, remember, the parameters are shared,
+
+773
+00:44:08,190 --> 00:44:12,070
+and you load that once into memory.
+
+774
+00:44:12,070 --> 00:44:14,630
+And you can process a lot of sequences.
+
+775
+00:44:17,330 --> 00:44:20,290
+So trade-off between latency and throughput,
+
+776
+00:44:20,290 --> 00:44:23,210
+just to make sure everyone's aligned-- smaller batch sizes
+
+777
+00:44:23,210 --> 00:44:25,430
+use better latency but worse throughput.
+
+778
+00:44:25,430 --> 00:44:29,770
+Large batch sizes yield better throughput but worse latency.
+
+779
+00:44:29,770 --> 00:44:30,970
+OK.
+
+780
+00:44:30,970 --> 00:44:33,630
+I'm not going to really talk about parallelism too much.
+
+781
+00:44:33,630 --> 00:44:35,510
+There's also another dimension of inference,
+
+782
+00:44:35,510 --> 00:44:39,530
+which is you can shard your model
+
+783
+00:44:39,530 --> 00:44:43,000
+across multiple all devices.
+
+784
+00:44:43,000 --> 00:44:45,440
+You can look at the scaling book chapter on inference
+
+785
+00:44:45,440 --> 00:44:47,600
+if you want to know more.
+
+786
+00:44:47,600 --> 00:44:50,680
+Just as a very trivial example, if you
+
+787
+00:44:50,680 --> 00:44:53,760
+launch M copies of the model, the latency is the same,
+
+788
+00:44:53,760 --> 00:44:58,760
+and the throughput increases by M.
+
+789
+00:44:58,760 --> 00:45:01,000
+And then the other metric we didn't talk about
+
+790
+00:45:01,000 --> 00:45:02,880
+is time to first token.
+
+791
+00:45:02,880 --> 00:45:04,760
+And this is essentially the time it
+
+792
+00:45:04,760 --> 00:45:07,840
+takes to do prefill because after you finish prefill,
+
+793
+00:45:07,840 --> 00:45:11,840
+then you can basically start generating.
+
+794
+00:45:11,840 --> 00:45:20,680
+So if you want to fast--
+
+795
+00:45:20,680 --> 00:45:26,360
+if you want faster TTFT, you should use smaller batch sizes,
+
+796
+00:45:26,360 --> 00:45:30,560
+and you want larger batch sizes to improve throughput.
+
+797
+00:45:30,560 --> 00:45:34,820
+So hopefully, that is clear.
+
+798
+00:45:34,820 --> 00:45:37,320
+Any questions about throughput and latency
+
+799
+00:45:37,320 --> 00:45:39,420
+and how their intention with each other?
+
+800
+00:45:47,830 --> 00:45:48,630
+OK.
+
+801
+00:45:48,630 --> 00:45:51,510
+So now that we have a conceptual framework for thinking
+
+802
+00:45:51,510 --> 00:45:57,830
+about how efficient inference is in terms of arithmetic intensity
+
+803
+00:45:57,830 --> 00:46:03,810
+and throughput and latency, now let's try to make it faster.
+
+804
+00:46:03,810 --> 00:46:05,210
+How do we make inference faster?
+
+805
+00:46:05,210 --> 00:46:07,830
+There's a bunch of different techniques which
+
+806
+00:46:07,830 --> 00:46:11,150
+are quite varied, ranging from changing the model architecture
+
+807
+00:46:11,150 --> 00:46:13,690
+to doing systems optimization and everything in between.
+
+808
+00:46:13,690 --> 00:46:20,350
+So inference in some sense is a fairly rich cross-cutting topic.
+
+809
+00:46:20,350 --> 00:46:27,550
+So the most maybe now in hindsight obvious thing
+
+810
+00:46:27,550 --> 00:46:31,430
+you can think about is hopefully beat it into your head
+
+811
+00:46:31,430 --> 00:46:35,630
+that memory is the bottleneck for inference,
+
+812
+00:46:35,630 --> 00:46:39,050
+and the KV cache takes up a lot of memory.
+
+813
+00:46:39,050 --> 00:46:42,410
+And it could even be larger than the number of parameters
+
+814
+00:46:42,410 --> 00:46:44,330
+if for a large enough batch size.
+
+815
+00:46:44,330 --> 00:46:48,450
+So let's just try to reduce the size of the KV cache.
+
+816
+00:46:48,450 --> 00:46:50,810
+Now, you have to be careful about how you do this
+
+817
+00:46:50,810 --> 00:46:52,810
+because you want to make sure you don't lose too
+
+818
+00:46:52,810 --> 00:46:56,050
+much accuracy in the process.
+
+819
+00:46:56,050 --> 00:47:00,750
+So here is one thing you can do, which we already talked about,
+
+820
+00:47:00,750 --> 00:47:03,450
+which is grouped query attention.
+
+821
+00:47:03,450 --> 00:47:09,490
+And just as a reminder here, so multi-headed attention--
+
+822
+00:47:09,490 --> 00:47:11,250
+basically for every token, you have
+
+823
+00:47:11,250 --> 00:47:13,850
+a key and a value and a query.
+
+824
+00:47:13,850 --> 00:47:16,930
+And if you do grouped query attention,
+
+825
+00:47:16,930 --> 00:47:20,610
+you basically compute the same number of queries,
+
+826
+00:47:20,610 --> 00:47:24,570
+but you have only a smaller number of groups,
+
+827
+00:47:24,570 --> 00:47:28,930
+and you compute key and value for each group.
+
+828
+00:47:28,930 --> 00:47:36,680
+So K is the number of groups here.
+
+829
+00:47:36,680 --> 00:47:41,560
+And so in the multi-headed attention, K is N, no reduction.
+
+830
+00:47:41,560 --> 00:47:44,200
+There's something called multi query attention, which no one
+
+831
+00:47:44,200 --> 00:47:46,120
+uses because it's really bad.
+
+832
+00:47:46,120 --> 00:47:47,440
+K equals 1.
+
+833
+00:47:47,440 --> 00:47:50,280
+And somewhere in between is hopefully
+
+834
+00:47:50,280 --> 00:47:54,920
+where we'll find a balance between accuracy and speed.
+
+835
+00:47:54,920 --> 00:47:59,720
+So this is the paper that introduces GQA from 2023.
+
+836
+00:47:59,720 --> 00:48:05,600
+And they show that if you look at time per sample, which
+
+837
+00:48:05,600 --> 00:48:09,920
+is related to both latency and throughput,
+
+838
+00:48:09,920 --> 00:48:15,480
+you see that the MHA-- so Multi-Head Attention.
+
+839
+00:48:15,480 --> 00:48:20,080
+Full attention has this high time.
+
+840
+00:48:20,080 --> 00:48:24,880
+Whereas, if you start K equals 1, it's much faster.
+
+841
+00:48:24,880 --> 00:48:29,118
+And then you can actually keep on increasing the K to K
+
+842
+00:48:29,118 --> 00:48:30,660
+equals 8, and it's still pretty good.
+
+843
+00:48:30,660 --> 00:48:36,910
+And eventually, your time goes up quite a bit.
+
+844
+00:48:36,910 --> 00:48:39,830
+OK.
+
+845
+00:48:39,830 --> 00:48:43,950
+So why does GQA improve latency and throughput?
+
+846
+00:48:43,950 --> 00:48:53,190
+Well, it reduces the KV cache by a factor of N over K. And just
+
+847
+00:48:53,190 --> 00:48:58,190
+as a friendly reminder, reducing memory usage leads to speed up
+
+848
+00:48:58,190 --> 00:49:00,270
+because we're memory-bound.
+
+849
+00:49:00,270 --> 00:49:06,767
+So let's revisit our friendly Llama model here.
+
+850
+00:49:06,767 --> 00:49:08,350
+Remember in the initial configuration,
+
+851
+00:49:08,350 --> 00:49:11,230
+we're just using K equals N. So there's
+
+852
+00:49:11,230 --> 00:49:15,110
+no multi-headed-- there's multi-head attention,
+
+853
+00:49:15,110 --> 00:49:19,110
+no reduction in the number key and values.
+
+854
+00:49:19,110 --> 00:49:25,030
+And so for this one, remember using a batch size of 64,
+
+855
+00:49:25,030 --> 00:49:27,510
+we get this throughput and latency.
+
+856
+00:49:27,510 --> 00:49:32,370
+Now if you do GQA, we're going to put in, let's say,
+
+857
+00:49:32,370 --> 00:49:36,260
+a kind of a sparsity of 1 one five.
+
+858
+00:49:36,260 --> 00:49:44,580
+That reduces the memory quite a bit,
+
+859
+00:49:44,580 --> 00:49:47,060
+which, in turn, improves the latency
+
+860
+00:49:47,060 --> 00:49:49,740
+and also improves the throughput.
+
+861
+00:49:49,740 --> 00:49:52,780
+So it's not that latency and throughput are always at odds.
+
+862
+00:49:52,780 --> 00:49:56,540
+If you reduce the amount of memory, then it improves both.
+
+863
+00:49:56,540 --> 00:49:59,420
+It's mainly the batch dimension that allows.
+
+864
+00:49:59,420 --> 00:50:01,800
+That is the point of tension.
+
+865
+00:50:01,800 --> 00:50:02,300
+OK.
+
+866
+00:50:02,300 --> 00:50:06,220
+So this is great.
+
+867
+00:50:06,220 --> 00:50:13,540
+And let's actually just increase the batch size even more
+
+868
+00:50:13,540 --> 00:50:15,860
+and see what happens.
+
+869
+00:50:15,860 --> 00:50:20,780
+So before, if we had a batch size of 256,
+
+870
+00:50:20,780 --> 00:50:22,240
+we ran out of memory.
+
+871
+00:50:22,240 --> 00:50:24,340
+But now, it fits in memory.
+
+872
+00:50:24,340 --> 00:50:32,690
+And we see that, the latency suffers a bit because we're
+
+873
+00:50:32,690 --> 00:50:36,570
+increasing the batch size, but the throughput
+
+874
+00:50:36,570 --> 00:50:40,770
+goes up proportionally.
+
+875
+00:50:40,770 --> 00:50:45,310
+So sometimes you play with these parameters jointly.
+
+876
+00:50:45,310 --> 00:50:47,090
+You can reduce the KV cache, but that
+
+877
+00:50:47,090 --> 00:50:48,850
+allows you to increase the batch size
+
+878
+00:50:48,850 --> 00:50:52,810
+and allow making other trade-offs.
+
+879
+00:50:52,810 --> 00:50:55,010
+So the final thing you have to do whenever
+
+880
+00:50:55,010 --> 00:50:58,130
+you do some lossy change is that you make
+
+881
+00:50:58,130 --> 00:50:59,970
+sure the accuracy doesn't drop.
+
+882
+00:50:59,970 --> 00:51:08,470
+And this paper shows that for a GQA, the time is better.
+
+883
+00:51:08,470 --> 00:51:14,850
+But across a bunch of evals, basically it works well.
+
+884
+00:51:14,850 --> 00:51:16,538
+So now with these accuracy values,
+
+885
+00:51:16,538 --> 00:51:18,830
+I think you always have to take it with a grain of salt
+
+886
+00:51:18,830 --> 00:51:20,790
+because this is for a particular model.
+
+887
+00:51:20,790 --> 00:51:24,390
+Later, the deep sea paper should show that it actually does hurt.
+
+888
+00:51:24,390 --> 00:51:28,530
+So I guess, take everything that's
+
+889
+00:51:28,530 --> 00:51:32,760
+not just math with a grain of salt here.
+
+890
+00:51:32,760 --> 00:51:33,260
+OK.
+
+891
+00:51:33,260 --> 00:51:36,320
+So speaking of DeepSeek, here's another idea
+
+892
+00:51:36,320 --> 00:51:39,880
+to reduce the KV cache.
+
+893
+00:51:39,880 --> 00:51:43,720
+So the theme is reduce the KV cache and latency and throughput
+
+894
+00:51:43,720 --> 00:51:45,760
+improve.
+
+895
+00:51:45,760 --> 00:51:49,280
+So this is multi-headed attention,
+
+896
+00:51:49,280 --> 00:51:54,320
+same number of queries and keys and values for every token.
+
+897
+00:51:54,320 --> 00:51:58,600
+And GQA, remember, we have reduced the number of keys
+
+898
+00:51:58,600 --> 00:52:01,480
+and values for every token.
+
+899
+00:52:01,480 --> 00:52:02,620
+Sorry, not for every token.
+
+900
+00:52:02,620 --> 00:52:07,280
+We basically have reduced the number of values and keys.
+
+901
+00:52:07,280 --> 00:52:11,440
+And now, the multi-latent attention for DeepSeek
+
+902
+00:52:11,440 --> 00:52:15,960
+says we're actually going to leave the number of keys
+
+903
+00:52:15,960 --> 00:52:21,148
+and values the same one for every token essentially.
+
+904
+00:52:21,148 --> 00:52:22,440
+But I'm going to parameterize--
+
+905
+00:52:22,440 --> 00:52:24,480
+I'm going to compress these.
+
+906
+00:52:24,480 --> 00:52:27,990
+So normally, you have some--
+
+907
+00:52:27,990 --> 00:52:29,690
+how do you compute your keys and values?
+
+908
+00:52:29,690 --> 00:52:33,030
+You have your activations, and you multiply them
+
+909
+00:52:33,030 --> 00:52:35,870
+by some matrix to get K and some other matrix to get V.
+
+910
+00:52:35,870 --> 00:52:40,230
+And these are generally N times H dimensions, like your model
+
+911
+00:52:40,230 --> 00:52:43,310
+dim, which is big.
+
+912
+00:52:43,310 --> 00:52:46,910
+So MLA says I'm going to actually project
+
+913
+00:52:46,910 --> 00:52:50,510
+these activations down into C dimensions.
+
+914
+00:52:50,510 --> 00:52:55,050
+So DeepSeek-V2 reduced it from 16,000 to 512,
+
+915
+00:52:55,050 --> 00:52:57,630
+so this is quite aggressive compression here.
+
+916
+00:52:57,630 --> 00:53:00,830
+And then I'm going to compute the k and the V
+
+917
+00:53:00,830 --> 00:53:04,510
+from this compressed representation.
+
+918
+00:53:04,510 --> 00:53:07,990
+So now, I can just store C. This is much smaller.
+
+919
+00:53:07,990 --> 00:53:09,790
+And then when I need my keys and values,
+
+920
+00:53:09,790 --> 00:53:11,850
+I can just materialize them.
+
+921
+00:53:14,390 --> 00:53:16,070
+So there is one wrinkle here, which
+
+922
+00:53:16,070 --> 00:53:19,070
+is that MLA is not compatible with rope,
+
+923
+00:53:19,070 --> 00:53:22,110
+which operates directly on the keys and values.
+
+924
+00:53:22,110 --> 00:53:25,540
+So what they do is add additional dimensions
+
+925
+00:53:25,540 --> 00:53:30,940
+for handling the rope.
+
+926
+00:53:30,940 --> 00:53:36,100
+But more or less, it's still a pretty big reduction.
+
+927
+00:53:36,100 --> 00:53:39,180
+So the latency and throughput improvements
+
+928
+00:53:39,180 --> 00:53:42,200
+follow by just simple math.
+
+929
+00:53:42,200 --> 00:53:47,940
+The smaller the KV cache, the faster you go.
+
+930
+00:53:47,940 --> 00:53:52,420
+It's almost kind of linear scaling up until at some point.
+
+931
+00:53:52,420 --> 00:53:54,020
+And then, remember, you need to check
+
+932
+00:53:54,020 --> 00:53:56,900
+whether your model is accurate.
+
+933
+00:53:56,900 --> 00:54:00,460
+So first of all, this is the result
+
+934
+00:54:00,460 --> 00:54:07,060
+that kind of contradicts or is in tension with the GQA paper.
+
+935
+00:54:07,060 --> 00:54:11,040
+They show that GQA actually isn't that great.
+
+936
+00:54:17,680 --> 00:54:18,780
+So this is MHA.
+
+937
+00:54:18,780 --> 00:54:19,640
+This is GQA.
+
+938
+00:54:19,640 --> 00:54:23,140
+These numbers are smaller than these numbers.
+
+939
+00:54:23,140 --> 00:54:29,640
+But they show that their method, MLA, Multi-Latent Attention
+
+940
+00:54:29,640 --> 00:54:32,740
+works even a little bit better than MHA.
+
+941
+00:54:32,740 --> 00:54:35,820
+But let's just say it's about the same.
+
+942
+00:54:35,820 --> 00:54:39,360
+So this column and this column are much better than--
+
+943
+00:54:39,360 --> 00:54:41,580
+I guess there's no GQA on this table.
+
+944
+00:54:41,580 --> 00:54:43,740
+You have to compare over here.
+
+945
+00:54:47,080 --> 00:54:50,600
+So I'll show you an-- yeah.
+
+946
+00:54:50,600 --> 00:54:54,160
+How does this compare to reducing the number
+
+947
+00:54:54,160 --> 00:54:56,545
+of dimensions, the model?
+
+948
+00:54:56,545 --> 00:54:57,920
+So the question is, how does this
+
+949
+00:54:57,920 --> 00:55:02,160
+compare with reducing the dimension of the model?
+
+950
+00:55:02,160 --> 00:55:03,880
+So that's a good question.
+
+951
+00:55:03,880 --> 00:55:06,080
+These ablations don't show that.
+
+952
+00:55:06,080 --> 00:55:08,280
+My guess is that reducing the model dimension
+
+953
+00:55:08,280 --> 00:55:12,920
+just makes things worse because you're indiscriminately
+
+954
+00:55:12,920 --> 00:55:15,440
+just reducing everything.
+
+955
+00:55:15,440 --> 00:55:19,720
+I think the trick in all of this kind of
+
+956
+00:55:19,720 --> 00:55:23,550
+is to find places in the model where you can squeeze.
+
+957
+00:55:23,550 --> 00:55:25,710
+And this apiary, I don't think you
+
+958
+00:55:25,710 --> 00:55:27,250
+can necessarily know for sure.
+
+959
+00:55:27,250 --> 00:55:29,167
+You just have to do a bunch of experimentation
+
+960
+00:55:29,167 --> 00:55:30,910
+and see what works.
+
+961
+00:55:30,910 --> 00:55:34,470
+So here's another idea to reduce your KV cache.
+
+962
+00:55:34,470 --> 00:55:37,510
+This is called cross-layer attention.
+
+963
+00:55:37,510 --> 00:55:43,790
+So the idea is that normally, every layer has KV, K's and V's.
+
+964
+00:55:43,790 --> 00:55:47,790
+But let's say instead of doing that, we're just
+
+965
+00:55:47,790 --> 00:55:53,310
+going to compute KVs for a subset of the layers.
+
+966
+00:55:53,310 --> 00:55:56,590
+And then, just for this layer, I'm
+
+967
+00:55:56,590 --> 00:55:59,850
+just going to use the previous layers on KV cache.
+
+968
+00:56:05,150 --> 00:56:07,010
+So this is another way of sharing.
+
+969
+00:56:07,010 --> 00:56:11,030
+Just like GQA shares K across heads,
+
+970
+00:56:11,030 --> 00:56:15,030
+now I'm sharing KVs across layers.
+
+971
+00:56:15,030 --> 00:56:19,790
+And empirically, this paper shows that doing this
+
+972
+00:56:19,790 --> 00:56:22,000
+improves the Pareto frontier.
+
+973
+00:56:22,000 --> 00:56:28,380
+So each of these models is better than--
+
+974
+00:56:28,380 --> 00:56:33,860
+given a method you can always sweep this the size of the KV
+
+975
+00:56:33,860 --> 00:56:41,060
+cache by changing the K and the head dimension, which, I guess,
+
+976
+00:56:41,060 --> 00:56:45,440
+kind of relates to your point about changing model dimension.
+
+977
+00:56:45,440 --> 00:56:53,700
+But if you do this CLA cross layer attention, it's better.
+
+978
+00:56:53,700 --> 00:56:59,180
+So moving on, whirlwind tour of different techniques
+
+979
+00:56:59,180 --> 00:57:01,280
+for reducing KV cache.
+
+980
+00:57:01,280 --> 00:57:04,620
+There's a local or sliding window attention.
+
+981
+00:57:04,620 --> 00:57:06,900
+This is a fairly kind of old idea
+
+982
+00:57:06,900 --> 00:57:09,160
+and a very kind of natural idea.
+
+983
+00:57:09,160 --> 00:57:12,780
+So if you look at the full attention matrix,
+
+984
+00:57:12,780 --> 00:57:14,260
+it's N squared.
+
+985
+00:57:14,260 --> 00:57:16,820
+And instead of doing that, if you're
+
+986
+00:57:16,820 --> 00:57:22,010
+going to generate a token, you just look at the last K tokens.
+
+987
+00:57:22,010 --> 00:57:24,210
+So you essentially have a sliding window.
+
+988
+00:57:24,210 --> 00:57:29,610
+For every token you generate, you just depend on the last K.
+
+989
+00:57:29,610 --> 00:57:34,970
+And now, if you do that, the effective--
+
+990
+00:57:34,970 --> 00:57:37,450
+so the KV cache is now independent of the sequence
+
+991
+00:57:37,450 --> 00:57:37,950
+length.
+
+992
+00:57:37,950 --> 00:57:46,170
+It's just the number of the batch times the other variables,
+
+993
+00:57:46,170 --> 00:57:47,190
+which is great.
+
+994
+00:57:47,190 --> 00:57:51,330
+And this is especially great for long context.
+
+995
+00:57:51,330 --> 00:57:54,110
+Now, because of the number of layers,
+
+996
+00:57:54,110 --> 00:57:56,330
+the effective context length is actually
+
+997
+00:57:56,330 --> 00:57:59,150
+larger than the number of the stated context length
+
+998
+00:57:59,150 --> 00:58:03,570
+because information can propagate farther in
+
+999
+00:58:03,570 --> 00:58:05,890
+if you go down the layers.
+
+1000
+00:58:05,890 --> 00:58:07,290
+Now, you can do fancier things.
+
+1001
+00:58:07,290 --> 00:58:11,950
+You can maybe not do a dense selection of layers,
+
+1002
+00:58:11,950 --> 00:58:13,750
+but you can space it out.
+
+1003
+00:58:13,750 --> 00:58:16,210
+You can also do this global plus sliding window
+
+1004
+00:58:16,210 --> 00:58:20,760
+where aware you have attention to a fixed
+
+1005
+00:58:20,760 --> 00:58:25,820
+grid of different token points, plus a local sliding window.
+
+1006
+00:58:25,820 --> 00:58:27,760
+So you can do various things.
+
+1007
+00:58:27,760 --> 00:58:30,120
+Now, the problem with this is that it actually
+
+1008
+00:58:30,120 --> 00:58:32,440
+still hurts accuracy.
+
+1009
+00:58:32,440 --> 00:58:34,420
+So this reduces expressivity.
+
+1010
+00:58:34,420 --> 00:58:38,520
+There's no free lunch here, or at least this
+
+1011
+00:58:38,520 --> 00:58:41,600
+was an expensive lunch.
+
+1012
+00:58:41,600 --> 00:58:43,480
+So the solution that people come up with
+
+1013
+00:58:43,480 --> 00:58:47,700
+is that they interleave local attention with global attention.
+
+1014
+00:58:47,700 --> 00:58:52,880
+So these hybrid models have full attention for some of the layers
+
+1015
+00:58:52,880 --> 00:58:57,800
+and some local layers for some of the other layers.
+
+1016
+00:58:57,800 --> 00:58:59,560
+And you're basically always trying
+
+1017
+00:58:59,560 --> 00:59:04,360
+to-- and then so that allows you to essentially reduce
+
+1018
+00:59:04,360 --> 00:59:05,940
+the KV cache a little bit.
+
+1019
+00:59:05,940 --> 00:59:12,440
+And you're always trying to balance accuracy with the speed.
+
+1020
+00:59:12,440 --> 00:59:13,340
+Yeah.
+
+1021
+00:59:13,340 --> 00:59:15,256
+Hybrid model-wise, is there a difference
+
+1022
+00:59:15,256 --> 00:59:18,110
+between the trade-off in using a linear time invariant
+
+1023
+00:59:18,110 --> 00:59:19,530
+versus a sliding window?
+
+1024
+00:59:19,530 --> 00:59:20,030
+Yeah.
+
+1025
+00:59:20,030 --> 00:59:23,790
+So the question is, what about linear attention versus sliding
+
+1026
+00:59:23,790 --> 00:59:24,930
+window attention?
+
+1027
+00:59:24,930 --> 00:59:28,530
+So I'm not going to talk about linear attention.
+
+1028
+00:59:28,530 --> 00:59:33,630
+But very quickly, there's a bunch of methods that where,
+
+1029
+00:59:33,630 --> 00:59:40,270
+instead of storing KV cache, since you basically
+
+1030
+00:59:40,270 --> 00:59:44,310
+compute some of compressed representation of all
+
+1031
+00:59:44,310 --> 00:59:45,370
+the history.
+
+1032
+00:59:45,370 --> 00:59:47,790
+So linear, the most naive linear attention
+
+1033
+00:59:47,790 --> 00:59:53,037
+is you just sum the KV values up into a single vector.
+
+1034
+00:59:53,037 --> 00:59:55,370
+So that's definitely independent of the sequence length.
+
+1035
+00:59:55,370 --> 00:59:56,490
+You can do fancier things.
+
+1036
+00:59:56,490 --> 00:59:58,950
+There's gated net, delta nets, and Mamba
+
+1037
+00:59:58,950 --> 01:00:04,630
+which allows you to try to compress but not forget as much.
+
+1038
+01:00:04,630 --> 01:00:07,010
+Now the question is, how do those compare?
+
+1039
+01:00:07,010 --> 01:00:09,550
+Those have also been used in place
+
+1040
+01:00:09,550 --> 01:00:14,220
+of sliding window attention, and people have gotten good results
+
+1041
+01:00:14,220 --> 01:00:14,880
+with them.
+
+1042
+01:00:14,880 --> 01:00:17,480
+You can also use a combination of full attention,
+
+1043
+01:00:17,480 --> 01:00:20,460
+sliding window intention, and the linear attention
+
+1044
+01:00:20,460 --> 01:00:23,940
+because they capture different aspects.
+
+1045
+01:00:23,940 --> 01:00:28,080
+If you care about local high-resolution stuff,
+
+1046
+01:00:28,080 --> 01:00:30,540
+then sliding attentions better.
+
+1047
+01:00:30,540 --> 01:00:34,140
+If you just want broad summaries of the past,
+
+1048
+01:00:34,140 --> 01:00:38,460
+then the other linear attention might be better.
+
+1049
+01:00:38,460 --> 01:00:40,480
+So then for a long context sentence,
+
+1050
+01:00:40,480 --> 01:00:42,220
+would you say your attention would
+
+1051
+01:00:42,220 --> 01:00:45,860
+be a better setting for that?
+
+1052
+01:00:45,860 --> 01:00:48,620
+So the question is, for long context with linear attention
+
+1053
+01:00:48,620 --> 01:00:50,240
+be better?
+
+1054
+01:00:54,140 --> 01:00:57,660
+So there's no free lunch, right?
+
+1055
+01:00:57,660 --> 01:00:59,740
+Let's say you have a very long context,
+
+1056
+01:00:59,740 --> 01:01:03,100
+and you're solving a needle in a haystack problem.
+
+1057
+01:01:03,100 --> 01:01:07,220
+If you have to compress your entire history
+
+1058
+01:01:07,220 --> 01:01:12,000
+into a small context, you're just going to lose information,
+
+1059
+01:01:12,000 --> 01:01:17,360
+and you might just not be able to retrieve it.
+
+1060
+01:01:17,360 --> 01:01:19,922
+I guess I feel like what it seems like people
+
+1061
+01:01:19,922 --> 01:01:21,880
+go with hybrid architectures that you'll always
+
+1062
+01:01:21,880 --> 01:01:24,600
+need some of longer attention, but I'm just
+
+1063
+01:01:24,600 --> 01:01:27,640
+trying to understand in my head, what the trade-off between using
+
+1064
+01:01:27,640 --> 01:01:30,880
+a sliding window versus some of a Mamba, delta net layer
+
+1065
+01:01:30,880 --> 01:01:31,800
+would be.
+
+1066
+01:01:31,800 --> 01:01:34,320
+Is using a delta net layer better
+
+1067
+01:01:34,320 --> 01:01:36,120
+than using sliding window consistently?
+
+1068
+01:01:36,120 --> 01:01:40,220
+Or what is the actual maybe representative trade-offs?
+
+1069
+01:01:40,220 --> 01:01:41,280
+Yeah.
+
+1070
+01:01:41,280 --> 01:01:43,200
+Maybe I'll say that the Mamba and delta net
+
+1071
+01:01:43,200 --> 01:01:46,805
+are more powerful than the sliding window.
+
+1072
+01:01:46,805 --> 01:01:48,680
+Attention maybe you can think about the Mamba
+
+1073
+01:01:48,680 --> 01:01:51,640
+as probably can--
+
+1074
+01:01:51,640 --> 01:01:54,520
+it certainly can represent some of the aspects of sliding window
+
+1075
+01:01:54,520 --> 01:01:57,660
+attention because you can just-- as you're doing the recurrence,
+
+1076
+01:01:57,660 --> 01:01:59,860
+it can just look at the last state.
+
+1077
+01:01:59,860 --> 01:02:06,360
+So yeah, maybe you can think about the linear attention
+
+1078
+01:02:06,360 --> 01:02:10,710
+or its extensions as being better.
+
+1079
+01:02:10,710 --> 01:02:12,230
+They have more room.
+
+1080
+01:02:12,230 --> 01:02:14,720
+Once you do sliding window attention, you're done.
+
+1081
+01:02:15,970 --> 01:02:16,470
+[INAUDIBLE]
+
+1082
+01:02:14,720 --> 01:02:15,970
+There's nothing else you can--
+
+1083
+01:02:16,470 --> 01:02:17,630
+Yeah.
+
+1084
+01:02:17,630 --> 01:02:18,170
+OK.
+
+1085
+01:02:18,170 --> 01:02:20,790
+So let me just quickly go through this.
+
+1086
+01:02:20,790 --> 01:02:23,390
+Just highlight this DeepSeek.
+
+1087
+01:02:23,390 --> 01:02:29,150
+DeepSeek continues to innovate different types of attention
+
+1088
+01:02:29,150 --> 01:02:30,670
+mechanisms.
+
+1089
+01:02:30,670 --> 01:02:33,730
+So remember, they came up with the multi-latent attention,
+
+1090
+01:02:33,730 --> 01:02:36,070
+which compresses the key values.
+
+1091
+01:02:36,070 --> 01:02:38,590
+There is this thing called--
+
+1092
+01:02:38,590 --> 01:02:41,205
+now they have compressed sparse attention, DeepSeek
+
+1093
+01:02:41,205 --> 01:02:43,330
+sparse attention, and heavily compressed attention.
+
+1094
+01:02:43,330 --> 01:02:48,558
+I never remember all these acronyms and what they mean,
+
+1095
+01:02:48,558 --> 01:02:49,850
+but let's look at this diagram.
+
+1096
+01:02:49,850 --> 01:02:56,310
+So normally, have your KV tokens and your query token.
+
+1097
+01:02:56,310 --> 01:03:01,110
+So compressed attention is going to basically compress
+
+1098
+01:03:01,110 --> 01:03:04,950
+every M tokens into one token.
+
+1099
+01:03:04,950 --> 01:03:06,670
+And then there's this thing called
+
+1100
+01:03:06,670 --> 01:03:11,260
+DeepSeek sparse attention, which basically selects
+
+1101
+01:03:11,260 --> 01:03:15,300
+a subset of those to keep.
+
+1102
+01:03:15,300 --> 01:03:18,540
+And the way you select a subset is that you actually
+
+1103
+01:03:18,540 --> 01:03:22,160
+compute some LiDAR weight queries and keys,
+
+1104
+01:03:22,160 --> 01:03:24,340
+and then you do a smaller attention
+
+1105
+01:03:24,340 --> 01:03:27,420
+to get these index scores so you know to keep.
+
+1106
+01:03:27,420 --> 01:03:30,140
+So a lightning fast way to figure out
+
+1107
+01:03:30,140 --> 01:03:32,000
+what tokens you need to keep.
+
+1108
+01:03:32,000 --> 01:03:34,500
+And then you use those.
+
+1109
+01:03:34,500 --> 01:03:40,060
+And then, there's some more compression that happens.
+
+1110
+01:03:40,060 --> 01:03:44,140
+So in the interest of time, I'll move on.
+
+1111
+01:03:44,140 --> 01:03:48,860
+The goal of this section is to reduce the KV cache because KV
+
+1112
+01:03:48,860 --> 01:03:50,360
+cache is related to memory.
+
+1113
+01:03:50,360 --> 01:03:53,280
+And we saw that inference is memory-bound.
+
+1114
+01:03:53,280 --> 01:03:57,020
+So that directly translates to improvements
+
+1115
+01:03:57,020 --> 01:03:59,380
+in throughput and latency.
+
+1116
+01:03:59,380 --> 01:04:02,340
+And the key is to do this without hurting accuracy.
+
+1117
+01:04:02,340 --> 01:04:07,650
+So you can do lower dimensional KV caches across layers
+
+1118
+01:04:07,650 --> 01:04:13,010
+by across heads and across head dimension.
+
+1119
+01:04:13,010 --> 01:04:14,870
+You can do local attention.
+
+1120
+01:04:14,870 --> 01:04:19,050
+You can do linear attention, which was discussed earlier,
+
+1121
+01:04:19,050 --> 01:04:20,130
+and there's much more.
+
+1122
+01:04:20,130 --> 01:04:22,150
+And there's also diffusion models,
+
+1123
+01:04:22,150 --> 01:04:24,690
+which is a non-autoregressive way
+
+1124
+01:04:24,690 --> 01:04:28,330
+to generate which can be much faster.
+
+1125
+01:04:28,330 --> 01:04:29,610
+OK.
+
+1126
+01:04:29,610 --> 01:04:33,270
+So let's talk about a few other ideas which are important.
+
+1127
+01:04:33,270 --> 01:04:35,890
+So quantization is more of a, I would
+
+1128
+01:04:35,890 --> 01:04:38,330
+say, less of a architecture and much more
+
+1129
+01:04:38,330 --> 01:04:44,130
+of a systems of perspective on how to make things smaller.
+
+1130
+01:04:44,130 --> 01:04:48,070
+So the key idea here is just reduce the precision of numbers.
+
+1131
+01:04:48,070 --> 01:04:51,610
+Less memory means higher latency and throughput.
+
+1132
+01:04:51,610 --> 01:04:54,770
+And obviously, you have to worry about accuracy.
+
+1133
+01:04:54,770 --> 01:05:05,080
+So quantization is-- there's many options here all the way
+
+1134
+01:05:05,080 --> 01:05:08,160
+from bf16 all the way down to int4.
+
+1135
+01:05:11,240 --> 01:05:15,760
+And so one thing you can do, if you're
+
+1136
+01:05:15,760 --> 01:05:19,060
+scared that quantization is going to mess you up,
+
+1137
+01:05:19,060 --> 01:05:21,700
+is that you train a model with quantization in mind.
+
+1138
+01:05:21,700 --> 01:05:24,920
+So this is quantization aware training.
+
+1139
+01:05:24,920 --> 01:05:27,920
+And during the feedforward pass during training,
+
+1140
+01:05:27,920 --> 01:05:31,080
+you quantize and dequantize, and you're basically
+
+1141
+01:05:31,080 --> 01:05:35,000
+simulating these quantization errors as you train.
+
+1142
+01:05:35,000 --> 01:05:37,520
+So then, generally, now the weights
+
+1143
+01:05:37,520 --> 01:05:39,700
+are adapted towards quantization.
+
+1144
+01:05:39,700 --> 01:05:40,860
+Things will work better.
+
+1145
+01:05:40,860 --> 01:05:45,600
+But the con is that it requires expensive large-scale training.
+
+1146
+01:05:45,600 --> 01:05:49,200
+And so what typically people do is they train models,
+
+1147
+01:05:49,200 --> 01:05:53,040
+and then they quantize after the fact.
+
+1148
+01:05:53,040 --> 01:05:56,040
+So this is post-training quantization.
+
+1149
+01:05:56,040 --> 01:05:59,920
+It's much cheaper often.
+
+1150
+01:05:59,920 --> 01:06:05,390
+There's a naive way to do it is that for every layer or tensor,
+
+1151
+01:06:05,390 --> 01:06:10,310
+you basically determine the scale and the 0 point for each,
+
+1152
+01:06:10,310 --> 01:06:11,390
+let's say, tensor.
+
+1153
+01:06:11,390 --> 01:06:15,750
+And then you quantize that separately.
+
+1154
+01:06:15,750 --> 01:06:18,910
+This generally doesn't work as well.
+
+1155
+01:06:18,910 --> 01:06:23,630
+You can use this idea called GPTQ,
+
+1156
+01:06:23,630 --> 01:06:27,350
+which uses some Hessian information to quantize layer
+
+1157
+01:06:27,350 --> 01:06:28,090
+by layer.
+
+1158
+01:06:28,090 --> 01:06:32,190
+And then you keep track of the errors which get propagated
+
+1159
+01:06:32,190 --> 01:06:33,930
+into the non-quantized weights.
+
+1160
+01:06:33,930 --> 01:06:37,550
+And so it allows you to correct for the errors.
+
+1161
+01:06:37,550 --> 01:06:40,150
+And now, activation-aware quantizing
+
+1162
+01:06:40,150 --> 01:06:47,950
+is more of a sophisticated way where the observation is
+
+1163
+01:06:47,950 --> 01:06:50,990
+that some activation channels are large
+
+1164
+01:06:50,990 --> 01:06:54,630
+and those the weights that interact with those matter more.
+
+1165
+01:06:54,630 --> 01:06:57,230
+So let's allocate more precision to these weights.
+
+1166
+01:06:57,230 --> 01:06:59,710
+So let's look at this picture.
+
+1167
+01:06:59,710 --> 01:07:05,500
+So normally, if you take fp16 weight matrix,
+
+1168
+01:07:05,500 --> 01:07:07,220
+and you quantize it, you get-- let's say
+
+1169
+01:07:07,220 --> 01:07:09,460
+you quantize it down to int3.
+
+1170
+01:07:09,460 --> 01:07:13,700
+But what you're going to do is you figure out
+
+1171
+01:07:13,700 --> 01:07:16,600
+which of these are active?
+
+1172
+01:07:16,600 --> 01:07:19,340
+So these are maybe activation channels.
+
+1173
+01:07:19,340 --> 01:07:21,780
+And some of these activation channels are large.
+
+1174
+01:07:21,780 --> 01:07:25,180
+So if they're large in general, then you
+
+1175
+01:07:25,180 --> 01:07:30,060
+basically allocate like, let's say, fp16 for this channel.
+
+1176
+01:07:30,060 --> 01:07:32,060
+You keep everything else as in three.
+
+1177
+01:07:32,060 --> 01:07:33,920
+And for a few important channels,
+
+1178
+01:07:33,920 --> 01:07:39,020
+you use higher precision.
+
+1179
+01:07:39,020 --> 01:07:45,220
+So another idea here is to do model pruning.
+
+1180
+01:07:45,220 --> 01:07:47,780
+So here you just take a large model,
+
+1181
+01:07:47,780 --> 01:07:51,080
+and you rip out pieces of it, and you fix it up.
+
+1182
+01:07:51,080 --> 01:07:54,920
+It's a very crude way, but it turns out to work.
+
+1183
+01:07:54,920 --> 01:08:00,760
+So there's this paper from NVIDIA where, essentially--
+
+1184
+01:08:00,760 --> 01:08:05,300
+let me actually-- let's see.
+
+1185
+01:08:05,300 --> 01:08:08,680
+So you first have to estimate the importance
+
+1186
+01:08:08,680 --> 01:08:11,440
+of the different parts of the model
+
+1187
+01:08:11,440 --> 01:08:14,000
+and choose the most important parts.
+
+1188
+01:08:14,000 --> 01:08:19,600
+And then you basically remove different hidden units
+
+1189
+01:08:19,600 --> 01:08:24,319
+and different even layers.
+
+1190
+01:08:24,319 --> 01:08:26,840
+And now, we have a model.
+
+1191
+01:08:26,840 --> 01:08:29,479
+It's not going to be very good.
+
+1192
+01:08:29,479 --> 01:08:31,859
+And so what you do is you post-train it.
+
+1193
+01:08:31,859 --> 01:08:34,640
+You train it some more on the data or the tasks
+
+1194
+01:08:34,640 --> 01:08:37,960
+that you care about to heal it.
+
+1195
+01:08:37,960 --> 01:08:46,840
+So this is, in some sense, a training way to reduce the KV
+
+1196
+01:08:46,840 --> 01:08:52,800
+cache, but where you initialize it with parts of a good model.
+
+1197
+01:08:52,800 --> 01:08:55,819
+So this seems to work pretty well.
+
+1198
+01:08:55,819 --> 01:08:59,830
+So they were able to take a 15B model and reduce it to an 8B
+
+1199
+01:08:59,830 --> 01:09:01,510
+model.
+
+1200
+01:09:01,510 --> 01:09:06,390
+And it doesn't really hurt accuracy by too much.
+
+1201
+01:09:06,390 --> 01:09:10,750
+And the amount that you use to train the model
+
+1202
+01:09:10,750 --> 01:09:13,770
+or through this process is much less.
+
+1203
+01:09:16,590 --> 01:09:17,090
+OK.
+
+1204
+01:09:17,090 --> 01:09:21,430
+So just to summarize here, the game
+
+1205
+01:09:21,430 --> 01:09:25,029
+is to reduce the inference complexity
+
+1206
+01:09:25,029 --> 01:09:26,830
+without hurting accuracy.
+
+1207
+01:09:26,830 --> 01:09:29,630
+You can think about this as mostly reducing the number
+
+1208
+01:09:29,630 --> 01:09:31,910
+of parameters or CPU cache.
+
+1209
+01:09:31,910 --> 01:09:34,930
+You can define a faster model architecture to train it,
+
+1210
+01:09:34,930 --> 01:09:39,090
+or you can define a faster model architecture.
+
+1211
+01:09:39,090 --> 01:09:42,910
+Initialize the weights from original model, which
+
+1212
+01:09:42,910 --> 01:09:44,510
+might have a different architecture,
+
+1213
+01:09:44,510 --> 01:09:47,310
+but you just make this Frankenstein thing,
+
+1214
+01:09:47,310 --> 01:09:53,109
+and then you repair the faster model with distillation.
+
+1215
+01:09:53,109 --> 01:09:54,430
+OK.
+
+1216
+01:09:54,430 --> 01:09:54,930
+Yeah.
+
+1217
+01:09:54,930 --> 01:09:57,780
+Could you say more about you distinguish the important
+
+1218
+01:09:57,780 --> 01:10:00,340
+from the unimportant layers?
+
+1219
+01:10:00,340 --> 01:10:02,860
+So how do you distinguish the important layers
+
+1220
+01:10:02,860 --> 01:10:05,180
+from the unimportant layers?
+
+1221
+01:10:05,180 --> 01:10:10,740
+So in general, you have a calibration set,
+
+1222
+01:10:10,740 --> 01:10:14,900
+and you pass the inputs through the model.
+
+1223
+01:10:14,900 --> 01:10:18,220
+And you're basically looking at the magnitude
+
+1224
+01:10:18,220 --> 01:10:20,180
+of the activations.
+
+1225
+01:10:20,180 --> 01:10:22,565
+And the ones that are-- some of them,
+
+1226
+01:10:22,565 --> 01:10:23,940
+especially if they're dead units,
+
+1227
+01:10:23,940 --> 01:10:25,600
+will be kind of close to 0.
+
+1228
+01:10:25,600 --> 01:10:28,580
+And the ones that are large, you want to keep.
+
+1229
+01:10:28,580 --> 01:10:30,860
+So that's a high-level idea.
+
+1230
+01:10:30,860 --> 01:10:33,660
+I guess why does it matter if the activation is high?
+
+1231
+01:10:33,660 --> 01:10:35,820
+It could just be like-- what if it's
+
+1232
+01:10:35,820 --> 01:10:37,740
+just always high, for instance?
+
+1233
+01:10:37,740 --> 01:10:40,180
+Or is that--
+
+1234
+01:10:40,180 --> 01:10:43,920
+So the question is, what if all the activations are high?
+
+1235
+01:10:43,920 --> 01:10:47,340
+So in general, this is a kind of an empirical observation
+
+1236
+01:10:47,340 --> 01:10:52,060
+that some of the channels will be much higher than others.
+
+1237
+01:10:52,060 --> 01:10:54,810
+If this weren't true, then these techniques wouldn't necessarily
+
+1238
+01:10:54,810 --> 01:11:00,050
+work, but it happens to be true because that's
+
+1239
+01:11:00,050 --> 01:11:03,650
+how these models ended up being trained.
+
+1240
+01:11:03,650 --> 01:11:07,290
+And then you can exploit that.
+
+1241
+01:11:07,290 --> 01:11:09,250
+Say a neuron, which is always value
+
+1242
+01:11:09,250 --> 01:11:11,810
+100 across all the samples.
+
+1243
+01:11:11,810 --> 01:11:14,750
+Would that mean that it's necessarily meaningful?
+
+1244
+01:11:14,750 --> 01:11:16,810
+Or maybe it's just an artifact of training
+
+1245
+01:11:16,810 --> 01:11:20,330
+that I'm just like [INAUDIBLE]?
+
+1246
+01:11:20,330 --> 01:11:20,950
+Yeah, I see.
+
+1247
+01:11:20,950 --> 01:11:24,850
+So the question is, what if a neuron is always 100?
+
+1248
+01:11:24,850 --> 01:11:27,370
+I mean, if that's the case, you can also look
+
+1249
+01:11:27,370 --> 01:11:30,970
+at variance-related questions.
+
+1250
+01:11:30,970 --> 01:11:32,650
+If it's 100, you can't just remove it
+
+1251
+01:11:32,650 --> 01:11:34,930
+because then everything is going to be broken.
+
+1252
+01:11:34,930 --> 01:11:36,990
+If it's high mean and low variance,
+
+1253
+01:11:36,990 --> 01:11:41,050
+maybe there's another a way to just incorporate the bias
+
+1254
+01:11:41,050 --> 01:11:43,230
+essentially.
+
+1255
+01:11:43,230 --> 01:11:43,730
+OK.
+
+1256
+01:11:43,730 --> 01:11:46,150
+Let me quickly go through this other idea.
+
+1257
+01:11:46,150 --> 01:11:50,730
+So far, we've looked at lossy methods which basically
+
+1258
+01:11:50,730 --> 01:11:54,640
+really crunch down the KV cache, but it could hurt accuracy.
+
+1259
+01:11:54,640 --> 01:11:58,720
+This is a very elegant way of doing this in a lossless way.
+
+1260
+01:11:58,720 --> 01:12:00,960
+This is called speculative sampling or speculative
+
+1261
+01:12:00,960 --> 01:12:02,080
+decoding.
+
+1262
+01:12:02,080 --> 01:12:05,260
+So remember that if you're doing prefill,
+
+1263
+01:12:05,260 --> 01:12:07,840
+you can encode all the tokens in parallel.
+
+1264
+01:12:07,840 --> 01:12:09,380
+This also gives you probabilities.
+
+1265
+01:12:09,380 --> 01:12:10,420
+This is fast.
+
+1266
+01:12:10,420 --> 01:12:13,320
+This is compute-bound and all nice things.
+
+1267
+01:12:13,320 --> 01:12:16,280
+And in generation, it's one at a time.
+
+1268
+01:12:16,280 --> 01:12:19,460
+So checking is faster than generation.
+
+1269
+01:12:19,460 --> 01:12:22,520
+If I give you a sequence, it's fast to tell me
+
+1270
+01:12:22,520 --> 01:12:26,320
+how good it is, much faster than it is to generate one at a time.
+
+1271
+01:12:26,320 --> 01:12:28,720
+So you can exploit this asymmetry
+
+1272
+01:12:28,720 --> 01:12:30,760
+using the following idea.
+
+1273
+01:12:30,760 --> 01:12:34,720
+So what we're going to do is use a cheap draft model
+
+1274
+01:12:34,720 --> 01:12:38,780
+to basically generate from the guest a few tokens,
+
+1275
+01:12:38,780 --> 01:12:40,098
+let's say four tokens.
+
+1276
+01:12:40,098 --> 01:12:42,640
+And then we're going to use the model we actually care about,
+
+1277
+01:12:42,640 --> 01:12:47,440
+the target model Q, which to basically review these tokens
+
+1278
+01:12:47,440 --> 01:12:50,200
+and accept or not accept them.
+
+1279
+01:12:50,200 --> 01:12:54,210
+So things are kind of chosen to be balanced.
+
+1280
+01:12:54,210 --> 01:12:56,270
+The draft model is just smaller and cheaper.
+
+1281
+01:12:56,270 --> 01:12:58,230
+And so even though it's memory-bound,
+
+1282
+01:12:58,230 --> 01:13:01,150
+and it has to generate one at a time, is not too bad.
+
+1283
+01:13:01,150 --> 01:13:04,010
+Whereas, the target model is big and expensive,
+
+1284
+01:13:04,010 --> 01:13:05,670
+but what we're doing is asking it
+
+1285
+01:13:05,670 --> 01:13:08,450
+to process a batch of tokens in parallel
+
+1286
+01:13:08,450 --> 01:13:11,350
+so it won't also be too bad.
+
+1287
+01:13:11,350 --> 01:13:17,050
+OK, so here's the video that shows how things work.
+
+1288
+01:13:17,050 --> 01:13:19,510
+So if you use a big model token by token,
+
+1289
+01:13:19,510 --> 01:13:22,150
+it's going to be pretty slow.
+
+1290
+01:13:22,150 --> 01:13:27,670
+But if you are doing speculative decoding,
+
+1291
+01:13:27,670 --> 01:13:35,150
+then you can see the small model generating a bunch of tokens,
+
+1292
+01:13:35,150 --> 01:13:42,230
+and then the large model basically critiquing them.
+
+1293
+01:13:42,230 --> 01:13:44,990
+And then, so you basically can get this burst
+
+1294
+01:13:44,990 --> 01:13:47,790
+of tokens and then maybe another burst of tokens
+
+1295
+01:13:47,790 --> 01:13:48,970
+and so on and so forth.
+
+1296
+01:13:51,820 --> 01:13:52,780
+OK.
+
+1297
+01:13:52,780 --> 01:13:56,740
+So here is the algorithm for-- there's
+
+1298
+01:13:56,740 --> 01:13:59,660
+a few papers that came out with speculative decoding
+
+1299
+01:13:59,660 --> 01:14:01,280
+around the same time.
+
+1300
+01:14:01,280 --> 01:14:04,380
+This is one of them.
+
+1301
+01:14:04,380 --> 01:14:09,220
+And so the idea here is that in order to generate,
+
+1302
+01:14:09,220 --> 01:14:11,952
+we're going to generate K tokens.
+
+1303
+01:14:11,952 --> 01:14:14,160
+And we're just going to sample from this draft model.
+
+1304
+01:14:14,160 --> 01:14:16,560
+So p is the draft model.
+
+1305
+01:14:16,560 --> 01:14:18,500
+We're going to sample K tokens.
+
+1306
+01:14:18,500 --> 01:14:20,380
+And then in parallel, we're going
+
+1307
+01:14:20,380 --> 01:14:27,220
+to compute the logits of these draft tokens using q.
+
+1308
+01:14:27,220 --> 01:14:29,220
+And then now we have to determine
+
+1309
+01:14:29,220 --> 01:14:31,040
+whether we accept or not.
+
+1310
+01:14:31,040 --> 01:14:34,900
+And this is where you do a bit of math and probability
+
+1311
+01:14:34,900 --> 01:14:36,060
+and statistics.
+
+1312
+01:14:36,060 --> 01:14:41,420
+You basically are going to accept with probability Min 1
+
+1313
+01:14:41,420 --> 01:14:45,260
+over this ratio of q over p.
+
+1314
+01:14:45,260 --> 01:14:52,630
+So if q is much larger than p, the larger the q is,
+
+1315
+01:14:52,630 --> 01:14:54,390
+the more likely you want to accept it.
+
+1316
+01:14:57,690 --> 01:15:03,290
+And otherwise you sample from this residual distribution
+
+1317
+01:15:03,290 --> 01:15:04,770
+and exit.
+
+1318
+01:15:04,770 --> 01:15:09,730
+So this is basically rejection sampling
+
+1319
+01:15:09,730 --> 01:15:11,310
+except for rejection sampling.
+
+1320
+01:15:11,310 --> 01:15:14,950
+Sometimes when you reject you get nothing.
+
+1321
+01:15:14,950 --> 01:15:17,130
+But here we always are guaranteed
+
+1322
+01:15:17,130 --> 01:15:20,610
+to get an exact sample from the target model.
+
+1323
+01:15:20,610 --> 01:15:28,330
+I'm going to skip this simple proof.
+
+1324
+01:15:28,330 --> 01:15:30,010
+It's basically the same arguments
+
+1325
+01:15:30,010 --> 01:15:33,090
+as rejection sampling to show that it's
+
+1326
+01:15:33,090 --> 01:15:40,850
+the exact probabilities from the target model.
+
+1327
+01:15:40,850 --> 01:15:45,310
+And the initial paper shows that this fast.
+
+1328
+01:15:45,310 --> 01:15:50,330
+And generally, if you have too few draft tokens,
+
+1329
+01:15:50,330 --> 01:15:54,590
+you're not really leveraging the batching on the target model
+
+1330
+01:15:54,590 --> 01:15:55,210
+side.
+
+1331
+01:15:55,210 --> 01:15:57,070
+And if you have too many, then you're
+
+1332
+01:15:57,070 --> 01:15:58,650
+going to reject more often.
+
+1333
+01:15:58,650 --> 01:16:04,470
+So there's a sweet spot around, in this case, three or four.
+
+1334
+01:16:04,470 --> 01:16:07,590
+And in general, the draft model is much smaller
+
+1335
+01:16:07,590 --> 01:16:08,890
+than the target model.
+
+1336
+01:16:08,890 --> 01:16:11,670
+And ideally, you want the model draft model
+
+1337
+01:16:11,670 --> 01:16:13,510
+to be as close to the target, which
+
+1338
+01:16:13,510 --> 01:16:17,550
+means that you want to distill it,
+
+1339
+01:16:17,550 --> 01:16:20,670
+which means that actually a lot of the same ideas that we just
+
+1340
+01:16:20,670 --> 01:16:24,510
+talked about are applicable to speculative decoding as well.
+
+1341
+01:16:24,510 --> 01:16:28,030
+So basically, the idea is that let's try
+
+1342
+01:16:28,030 --> 01:16:32,290
+to reduce your KV cache via all the different shenanigans.
+
+1343
+01:16:32,290 --> 01:16:35,030
+And if you end up with a model you're happy with,
+
+1344
+01:16:35,030 --> 01:16:36,090
+just serve that.
+
+1345
+01:16:36,090 --> 01:16:37,910
+If you're not happy with it, then
+
+1346
+01:16:37,910 --> 01:16:41,230
+it at least can be a draft model and you can use your main model
+
+1347
+01:16:41,230 --> 01:16:43,390
+to fix things up.
+
+1348
+01:16:43,390 --> 01:16:45,580
+There's a bunch of whole literature
+
+1349
+01:16:45,580 --> 01:16:48,100
+on speculative decoding right now
+
+1350
+01:16:48,100 --> 01:16:55,780
+that improve over the original, which I'll skip for now.
+
+1351
+01:16:55,780 --> 01:17:01,480
+So very quickly now, dynamic workloads.
+
+1352
+01:17:01,480 --> 01:17:06,120
+So this is the use case, is you're serving a live website,
+
+1353
+01:17:06,120 --> 01:17:09,060
+and users come and chat with your model.
+
+1354
+01:17:09,060 --> 01:17:12,460
+The requests arrive at different times.
+
+1355
+01:17:12,460 --> 01:17:14,600
+They have different shared prefixes,
+
+1356
+01:17:14,600 --> 01:17:17,260
+and they have different lengths.
+
+1357
+01:17:17,260 --> 01:17:19,820
+So it's kind of pretty messy.
+
+1358
+01:17:19,820 --> 01:17:23,020
+It's far from this very simple training where
+
+1359
+01:17:23,020 --> 01:17:27,900
+you have these blocks of the same number of tokens
+
+1360
+01:17:27,900 --> 01:17:29,140
+all at once.
+
+1361
+01:17:29,140 --> 01:17:30,680
+So what do you do in this case?
+
+1362
+01:17:30,680 --> 01:17:35,020
+So there's this idea-- there's a system called
+
+1363
+01:17:35,020 --> 01:17:36,740
+Orca that was built. This is actually
+
+1364
+01:17:36,740 --> 01:17:39,340
+very early on which introduced this idea
+
+1365
+01:17:39,340 --> 01:17:41,340
+of continuous batching.
+
+1366
+01:17:41,340 --> 01:17:45,770
+So the idea is that you get a bunch of requests
+
+1367
+01:17:45,770 --> 01:17:46,710
+that look like this.
+
+1368
+01:17:46,710 --> 01:17:49,290
+So here's a prefix of the first request,
+
+1369
+01:17:49,290 --> 01:17:51,030
+and you're generating this token.
+
+1370
+01:17:51,030 --> 01:17:52,448
+Here's the second one.
+
+1371
+01:17:52,448 --> 01:17:53,990
+Here's the third one, the fourth one.
+
+1372
+01:17:53,990 --> 01:17:56,930
+It's jagged because every prefix has a different length.
+
+1373
+01:17:56,930 --> 01:17:58,570
+And what we're going to do is we're
+
+1374
+01:17:58,570 --> 01:18:00,930
+going to decode step by step.
+
+1375
+01:18:00,930 --> 01:18:05,710
+So every step you decode one token for all the sequences.
+
+1376
+01:18:05,710 --> 01:18:08,510
+Next step, you decode another token for all the sequences.
+
+1377
+01:18:08,510 --> 01:18:13,850
+And then if you end, you just eject that sequence.
+
+1378
+01:18:13,850 --> 01:18:16,730
+And then as new requests arrive to the batch,
+
+1379
+01:18:16,730 --> 01:18:19,730
+then you basically put it in the batch,
+
+1380
+01:18:19,730 --> 01:18:22,913
+and then you just continue.
+
+1381
+01:18:22,913 --> 01:18:25,330
+So that's why it's called continuous batching because it's
+
+1382
+01:18:25,330 --> 01:18:29,370
+this batch is dynamically being updated
+
+1383
+01:18:29,370 --> 01:18:32,970
+with either old finished sequences being evicted
+
+1384
+01:18:32,970 --> 01:18:34,770
+and new ones coming in.
+
+1385
+01:18:34,770 --> 01:18:39,250
+So now, one problem here is that everything
+
+1386
+01:18:39,250 --> 01:18:41,760
+we've seen batching works when all the sequences have
+
+1387
+01:18:41,760 --> 01:18:43,160
+the same dimensionality.
+
+1388
+01:18:43,160 --> 01:18:44,600
+You have tensors.
+
+1389
+01:18:44,600 --> 01:18:46,960
+Every slice has the same dimensionality.
+
+1390
+01:18:46,960 --> 01:18:50,260
+But if you request here has a different length,
+
+1391
+01:18:50,260 --> 01:18:51,840
+so what do you do about that?
+
+1392
+01:18:51,840 --> 01:18:54,200
+So there's this idea called selective batching
+
+1393
+01:18:54,200 --> 01:19:00,640
+where let's say you have a length 3, length 9, and a length
+
+1394
+01:19:00,640 --> 01:19:01,680
+5.
+
+1395
+01:19:01,680 --> 01:19:04,820
+So here in the attention computation,
+
+1396
+01:19:04,820 --> 01:19:06,560
+you can't really do anything about this
+
+1397
+01:19:06,560 --> 01:19:11,940
+because attention depends on the length of your sequence.
+
+1398
+01:19:11,940 --> 01:19:16,140
+So if you have a 3 by 3, a 9 by 9 computation,
+
+1399
+01:19:16,140 --> 01:19:21,320
+you can't really share the tensor effectively.
+
+1400
+01:19:21,320 --> 01:19:23,780
+But for the non-attention, the MLP layers,
+
+1401
+01:19:23,780 --> 01:19:28,160
+which takes up a lot of FLOPs, you can actually just
+
+1402
+01:19:28,160 --> 01:19:30,680
+concatenate all the sequences together
+
+1403
+01:19:30,680 --> 01:19:34,720
+to form a mega sequence, and you process that.
+
+1404
+01:19:34,720 --> 01:19:38,640
+So final idea is page attention.
+
+1405
+01:19:38,640 --> 01:19:41,910
+This was introduced in the BLM paper.
+
+1406
+01:19:41,910 --> 01:19:44,250
+Of course, BLM has many other bells and whistles now,
+
+1407
+01:19:44,250 --> 01:19:49,030
+but this is the core idea at that time.
+
+1408
+01:19:49,030 --> 01:19:54,830
+So the question is, how is the KV cache stored?
+
+1409
+01:19:54,830 --> 01:20:00,260
+So if you think about requests coming in,
+
+1410
+01:20:00,260 --> 01:20:03,010
+you have to put them in memory somewhere.
+
+1411
+01:20:03,010 --> 01:20:04,750
+And in general, there's this problem
+
+1412
+01:20:04,750 --> 01:20:06,250
+that you get fragmentation.
+
+1413
+01:20:06,250 --> 01:20:08,070
+This is what happens to--
+
+1414
+01:20:08,070 --> 01:20:11,310
+or used to happen to your hard drive.
+
+1415
+01:20:11,310 --> 01:20:15,630
+And you have to defrag your hard drive back in the day.
+
+1416
+01:20:15,630 --> 01:20:19,730
+So there's two types of fragmentation.
+
+1417
+01:20:19,730 --> 01:20:23,910
+One is that you have to allocate enough buffer so
+
+1418
+01:20:23,910 --> 01:20:26,910
+that-- because you don't when you're going to stop.
+
+1419
+01:20:26,910 --> 01:20:31,030
+So you might have a max token limit of 1,024.
+
+1420
+01:20:31,030 --> 01:20:32,770
+So you have to allocate all this memory.
+
+1421
+01:20:32,770 --> 01:20:34,228
+And you can't put anything in there
+
+1422
+01:20:34,228 --> 01:20:36,150
+because you're going to just generate
+
+1423
+01:20:36,150 --> 01:20:39,720
+until you hit the max tokens, and that's very wasteful.
+
+1424
+01:20:39,720 --> 01:20:41,380
+That's internal fragmentation.
+
+1425
+01:20:41,380 --> 01:20:44,460
+And then there's also you have-- there could be space
+
+1426
+01:20:44,460 --> 01:20:46,360
+between different requests.
+
+1427
+01:20:46,360 --> 01:20:50,040
+And that space is maybe too small to get used effectively.
+
+1428
+01:20:50,040 --> 01:20:52,660
+So that's just wasted space.
+
+1429
+01:20:52,660 --> 01:20:56,738
+So the solution here is just these are systems people.
+
+1430
+01:20:56,738 --> 01:20:58,280
+So they know their operating systems.
+
+1431
+01:20:58,280 --> 01:21:01,380
+They said, OK, well we've solved this problem once before,
+
+1432
+01:21:01,380 --> 01:21:04,180
+so let's just use the same idea here.
+
+1433
+01:21:04,180 --> 01:21:06,780
+So we're going to divide the KV cache of a sequence
+
+1434
+01:21:06,780 --> 01:21:11,440
+into non-contiguous blocks, OK?
+
+1435
+01:21:11,440 --> 01:21:14,780
+So if you have this sequence, four score and seven years
+
+1436
+01:21:14,780 --> 01:21:16,500
+ago our fathers brought forth, we're
+
+1437
+01:21:16,500 --> 01:21:19,460
+just going to chunk it up into these blocks of size 4.
+
+1438
+01:21:19,460 --> 01:21:21,860
+Doesn't matter where the blocks go, but they're
+
+1439
+01:21:21,860 --> 01:21:25,080
+going to be aligned according to the block.
+
+1440
+01:21:25,080 --> 01:21:27,780
+So there's some uniformity there.
+
+1441
+01:21:27,780 --> 01:21:32,980
+So when two requests share the same--
+
+1442
+01:21:32,980 --> 01:21:35,080
+can actually share the same KV cache.
+
+1443
+01:21:40,410 --> 01:21:45,130
+So you might have this block and this block.
+
+1444
+01:21:45,130 --> 01:21:48,170
+So this block might go here and here,
+
+1445
+01:21:48,170 --> 01:21:49,870
+and this block might be over there.
+
+1446
+01:21:49,870 --> 01:21:52,710
+So they're interspersed.
+
+1447
+01:21:52,710 --> 01:21:54,310
+But as long as you have the indices
+
+1448
+01:21:54,310 --> 01:21:58,410
+and keep track of where everything is, it's fine.
+
+1449
+01:21:58,410 --> 01:22:05,330
+So in particular, if you have, system prompts, then
+
+1450
+01:22:05,330 --> 01:22:09,890
+you can actually just cache these system prompts,
+
+1451
+01:22:09,890 --> 01:22:12,330
+the KV cache and the system prompts, once.
+
+1452
+01:22:12,330 --> 01:22:15,710
+And that can be useful for all the queries, OK?
+
+1453
+01:22:15,710 --> 01:22:17,810
+So this is very useful because if a lot of people
+
+1454
+01:22:17,810 --> 01:22:19,185
+are using the same system prompt,
+
+1455
+01:22:19,185 --> 01:22:24,450
+then you don't have to compute the cache for every request.
+
+1456
+01:22:24,450 --> 01:22:29,090
+Also there are many applications where you have the same prompt,
+
+1457
+01:22:29,090 --> 01:22:31,650
+and you actually want to generate multiple responses.
+
+1458
+01:22:31,650 --> 01:22:34,550
+So in that case, you can also just share
+
+1459
+01:22:34,550 --> 01:22:39,070
+the KB cache for the prompt and just
+
+1460
+01:22:39,070 --> 01:22:42,670
+have unique responses coming out.
+
+1461
+01:22:42,670 --> 01:22:46,990
+OK, So for example, if you were to generate,
+
+1462
+01:22:46,990 --> 01:22:50,150
+let's say, multiple generations from score
+
+1463
+01:22:50,150 --> 01:22:55,550
+and seven years ago are, blank, and so what would happen here
+
+1464
+01:22:55,550 --> 01:22:57,950
+is that you would have score and seven.
+
+1465
+01:22:57,950 --> 01:23:02,750
+And you would start by having years ago or our.
+
+1466
+01:23:02,750 --> 01:23:07,170
+And then this is called copy on write semantics.
+
+1467
+01:23:07,170 --> 01:23:08,130
+You keep this.
+
+1468
+01:23:08,130 --> 01:23:10,290
+And then we have these two samples.
+
+1469
+01:23:10,290 --> 01:23:14,510
+And if they had happened to sample let's say the same token,
+
+1470
+01:23:14,510 --> 01:23:17,010
+you just continue with that.
+
+1471
+01:23:17,010 --> 01:23:19,670
+But if they sample different tokens, you split the block,
+
+1472
+01:23:19,670 --> 01:23:22,030
+and then you can continue there.
+
+1473
+01:23:22,030 --> 01:23:25,110
+So you're basically sharing as much of the prefix cache
+
+1474
+01:23:25,110 --> 01:23:28,310
+as you can.
+
+1475
+01:23:28,310 --> 01:23:33,060
+There's a bunch of other optimizations like kernels
+
+1476
+01:23:33,060 --> 01:23:36,900
+that I'm not going to have time to go over.
+
+1477
+01:23:36,900 --> 01:23:39,140
+But the general idea is that you're
+
+1478
+01:23:39,140 --> 01:23:44,420
+using these operating systems metaphors to manage
+
+1479
+01:23:44,420 --> 01:23:46,460
+your inference.
+
+1480
+01:23:46,460 --> 01:23:51,740
+So summary here-- inference is really, really important.
+
+1481
+01:23:51,740 --> 01:23:54,220
+It's very different from training.
+
+1482
+01:23:54,220 --> 01:23:57,060
+Even though it's the same model, but you're asking the model
+
+1483
+01:23:57,060 --> 01:24:00,500
+to do something very different, ends up being very memory-bound.
+
+1484
+01:24:00,500 --> 01:24:06,820
+And it's also dynamic if you're in a live chatbot use case.
+
+1485
+01:24:06,820 --> 01:24:11,560
+We saw a variety of different techniques to improve inference.
+
+1486
+01:24:11,560 --> 01:24:12,360
+You can quantize.
+
+1487
+01:24:12,360 --> 01:24:14,440
+You can come up with new architectures.
+
+1488
+01:24:14,440 --> 01:24:16,280
+You can prune and distill.
+
+1489
+01:24:16,280 --> 01:24:19,380
+You can also use speculative sampling.
+
+1490
+01:24:19,380 --> 01:24:22,380
+But all of these are driven by the same principle
+
+1491
+01:24:22,380 --> 01:24:24,940
+here, which is reduce your KV cache
+
+1492
+01:24:24,940 --> 01:24:28,540
+but don't hurt accuracy too much.
+
+1493
+01:24:28,540 --> 01:24:33,730
+And then there's ideas from systems like paging
+
+1494
+01:24:33,730 --> 01:24:35,850
+and speculative execution that can
+
+1495
+01:24:35,850 --> 01:24:40,420
+be brought to bear for actually live inference servers.
+
+1496
+01:24:40,420 --> 01:24:42,670
+One thing we didn't really get a chance to talk about,
+
+1497
+01:24:42,670 --> 01:24:44,730
+which was discussed briefly, is that I
+
+1498
+01:24:44,730 --> 01:24:48,210
+think that new architectures have actually a huge potential
+
+1499
+01:24:48,210 --> 01:24:51,410
+for improvement, things like state space models
+
+1500
+01:24:51,410 --> 01:24:54,810
+or linear attention or diffusion.
+
+1501
+01:24:54,810 --> 01:24:58,330
+At some level, the KV cache and the way
+
+1502
+01:24:58,330 --> 01:25:01,130
+that attention is built fundamentally
+
+1503
+01:25:01,130 --> 01:25:06,010
+makes it an inference unfriendly kind of architecture.
+
+1504
+01:25:06,010 --> 01:25:08,690
+So if you can come up with a new architecture that
+
+1505
+01:25:08,690 --> 01:25:10,810
+is designed for inference in the way
+
+1506
+01:25:10,810 --> 01:25:15,330
+that the transformer was not, this can maybe unlock a lot.
+
+1507
+01:25:15,330 --> 01:25:18,090
+OK, so I will stop there.
+
+1508
+01:25:18,090 --> 01:25:21,210
+And next class, Tatsu will return and talk
+
+1509
+01:25:21,210 --> 01:25:24,280
+about scaling laws part 2.
